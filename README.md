@@ -1,5 +1,7 @@
 # Market Mentor
 
+**Live app: https://market-mentor.pages.dev** — invite code `MENTOR-FRIENDS`
+
 A stock analysis, scanning and learning platform for beginners — inspired by Yahoo Finance, but with transparent technical scanning, plain-English explanations, pattern teaching, and actionable alerts.
 
 **Educational and analytical software. Not financial advice.** All signals are probabilistic observations about historical price behavior.
