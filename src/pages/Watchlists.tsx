@@ -123,7 +123,15 @@ export default function Watchlists() {
                     return (
                       <tr key={sym} onClick={() => nav(`/stock/${sym}`)}>
                         <td><span className="ticker-link">{sym}</span><div className="faint">{entry?.name}</div></td>
-                        <td className="mono">{q ? fmtPrice(q.price) : <Skeleton w={50} />}</td>
+                        <td className="mono">
+                          {q ? fmtPrice(q.price) : <Skeleton w={50} />}
+                          {q?.extendedPrice != null && (q.marketState === "PRE" || q.marketState === "POST") && (
+                            <div className="faint" style={{ whiteSpace: "nowrap" }}>
+                              {q.marketState === "PRE" ? "Pre" : "AH"}: {fmtPrice(q.extendedPrice)}{" "}
+                              <span className={(q.extendedChangePct ?? 0) >= 0 ? "up" : "down"}>{fmtPct(q.extendedChangePct ?? 0)}</span>
+                            </div>
+                          )}
+                        </td>
                         <td className={classNames("mono", q && q.changePct >= 0 ? "up" : "down")}>{q ? fmtPct(q.changePct) : "…"}</td>
                         <td className="mono faint">{q ? `${fmtPrice(q.dayLow)} – ${fmtPrice(q.dayHigh)}` : "…"}</td>
                         <td className="mono">{q ? `${fmtVolume(q.volume)} (${(q.volume / q.avgVolume).toFixed(1)}×)` : "…"}</td>

@@ -219,7 +219,12 @@ export default {
               const meta = r.value.meta;
               const closes = (r.value.indicators?.quote?.[0]?.close || []).filter((x) => x != null);
               const price = meta.regularMarketPrice;
-              const prev = meta.chartPreviousClose ?? closes[closes.length - 2] ?? price;
+              // Daily change must use the PREVIOUS SESSION close. On a 1mo
+              // chart, meta.chartPreviousClose is the close before the whole
+              // window (a month ago) — that showed month-to-date change
+              // instead of today's. The second-to-last daily close is the
+              // prior session whether the market is open or closed.
+              const prev = closes.length >= 2 ? closes[closes.length - 2] : (meta.previousClose ?? price);
               indexes.push({
                 id: INDEXES[i].id,
                 name: INDEXES[i].name,
@@ -227,6 +232,7 @@ export default {
                 change: round2(price - prev),
                 changePct: round2(((price - prev) / prev) * 100),
                 spark: closes.map(round2),
+                marketState: marketState(meta, nowSec),
               });
             });
             return json({ indexes }, 60);

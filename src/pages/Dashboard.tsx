@@ -31,12 +31,23 @@ export default function Dashboard() {
     () => snap?.results.filter((r) => r.patterns.length > 0).slice(0, 3) ?? null,
     [snap]
   );
-  const movers = useMemo(
+  const gainers = useMemo(
     () => (snap ? [...snap.results].sort((a, b) => b.changePct - a.changePct).slice(0, 5) : null),
+    [snap]
+  );
+  const losers = useMemo(
+    () => (snap ? [...snap.results].sort((a, b) => a.changePct - b.changePct).slice(0, 5) : null),
     [snap]
   );
   const breadth = snap?.breadth ?? null;
   const recentAlerts = alerts.slice(0, 5);
+  const marketState = indexes?.[0]?.marketState;
+  const MARKET_STATE_LABEL: Record<string, { label: string; color: string }> = {
+    PRE: { label: "Pre-market", color: "var(--warn)" },
+    REGULAR: { label: "Market open", color: "var(--up)" },
+    POST: { label: "After hours", color: "var(--warn)" },
+    CLOSED: { label: "Market closed", color: "var(--text-faint)" },
+  };
 
   if (error) return <EmptyState title="Couldn't load market data" hint={error} />;
 
@@ -44,7 +55,15 @@ export default function Dashboard() {
     <div className="stack" style={{ gap: 16 }}>
       <div className="row between wrap">
         <div>
-          <h1>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {settings.displayName}</h1>
+          <div className="row wrap" style={{ gap: 10 }}>
+            <h1>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {settings.displayName}</h1>
+            {marketState && MARKET_STATE_LABEL[marketState] && (
+              <span className="badge outline" style={{ alignSelf: "center" }}>
+                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 99, background: MARKET_STATE_LABEL[marketState].color, marginRight: 6 }} />
+                {MARKET_STATE_LABEL[marketState].label}
+              </span>
+            )}
+          </div>
           <div className="muted small">
             {settings.beginnerMode
               ? "Here's what the market is doing and which stocks our scanner finds interesting today — with plain-English reasons."
@@ -193,19 +212,32 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Momentum leaders */}
+          {/* Top gainers & losers */}
           <div className="card">
             <div className="card-title">
-              <h2><IconTrendUp className="icon" style={{ width: 16, height: 16, verticalAlign: -3 }} /> Momentum today</h2>
+              <h2><IconTrendUp className="icon" style={{ width: 16, height: 16, verticalAlign: -3 }} /> Gainers & losers</h2>
+              <Tooltip text="The biggest movers of the day across all scanned stocks. Big moves usually have a news reason — always check why before reading anything into it." />
             </div>
-            {movers ? (
-              <div className="stack" style={{ gap: 6 }}>
-                {movers.map((r) => (
-                  <div key={r.symbol} className="row between small" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
-                    <span><b>{r.symbol}</b> <span className="faint">{r.sector}</span></span>
-                    <span className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</span>
-                  </div>
-                ))}
+            {gainers && losers ? (
+              <div className="grid cols-2" style={{ gap: 12 }}>
+                <div className="stack" style={{ gap: 6 }}>
+                  <div className="faint" style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Top gainers</div>
+                  {gainers.map((r) => (
+                    <div key={r.symbol} className="row between small" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
+                      <b>{r.symbol}</b>
+                      <span className="mono up">{fmtPct(r.changePct)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="stack" style={{ gap: 6 }}>
+                  <div className="faint" style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Top losers</div>
+                  {losers.map((r) => (
+                    <div key={r.symbol} className="row between small" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
+                      <b>{r.symbol}</b>
+                      <span className="mono down">{fmtPct(r.changePct)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : <div className="stack"><Skeleton /><Skeleton /><Skeleton /></div>}
           </div>

@@ -60,6 +60,8 @@ export interface IndexSummary {
   change: number;
   changePct: number;
   spark: number[];
+  /** Exchange session state (live data mode). */
+  marketState?: MarketState;
 }
 
 export interface BreadthSummary {
