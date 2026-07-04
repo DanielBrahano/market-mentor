@@ -5,7 +5,7 @@
  *   but a backend can start sending real pushes to the existing subscription
  *   without changing this file.
  */
-const CACHE = "market-mentor-v1";
+const CACHE = "market-mentor-v2";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {

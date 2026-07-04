@@ -7,6 +7,7 @@ import {
   IconScreener, IconSearch, IconSettings, IconWatchlist,
 } from "../icons";
 import { provider } from "../../lib/data/provider";
+import { liveFellBack } from "../../lib/data/select";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: IconDashboard, end: true },
@@ -120,6 +121,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="spacer" />
           <DataSourceBadge />
         </header>
+        {provider().freshness === "simulated" && (
+          <div
+            style={{
+              background: "var(--warn-soft)", borderBottom: "1px solid var(--warn)",
+              padding: "8px 22px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            }}
+          >
+            <span>
+              <b>Simulated prices.</b>{" "}
+              {liveFellBack()
+                ? "Live data couldn't be reached from your network just now — these are realistic practice numbers, not real quotes."
+                : "You've selected simulated data in Settings — these are realistic practice numbers, not real quotes."}
+            </span>
+            {liveFellBack()
+              ? <button className="btn sm" onClick={() => window.location.reload()}>Retry live data</button>
+              : <NavLink className="btn sm" to="/settings">Change in Settings</NavLink>}
+          </div>
+        )}
         <main className="page">{children}</main>
         <footer className="disclaimer">
           <b>Disclaimer:</b> Market Mentor is educational and analytical software. Nothing here is financial advice or a recommendation to buy or sell any security.

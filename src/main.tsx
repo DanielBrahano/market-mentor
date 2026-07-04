@@ -15,16 +15,25 @@ import "./styles/global.css";
  * if the relay is unreachable we fall back to the simulated full-market feed
  * for this session and say so in Settings.
  */
+async function healthCheck(timeoutMs: number): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(`${WORKER_BASE}/health`, { signal: ctrl.signal });
+    clearTimeout(t);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function boot() {
   if (getDataSourcePreference() === "live") {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 3500);
-      const res = await fetch(`${WORKER_BASE}/health`, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (!res.ok) throw new Error("unhealthy");
+    // Slow mobile networks need patience: generous timeout plus one retry.
+    const ok = (await healthCheck(8000)) || (await healthCheck(8000));
+    if (ok) {
       setProvider(liveProvider);
-    } catch {
+    } else {
       markLiveFallback();
       setProvider(mockProvider);
     }
