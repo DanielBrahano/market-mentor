@@ -17,6 +17,8 @@ export type Timeframe = "1D" | "5D" | "1M" | "3M" | "6M" | "1Y" | "5Y";
 /** How fresh the data actually is. Always shown to the user. */
 export type DataFreshness = "realtime" | "near-realtime" | "delayed" | "simulated";
 
+export type MarketState = "PRE" | "REGULAR" | "POST" | "CLOSED";
+
 export interface Quote {
   symbol: string;
   price: number;
@@ -28,6 +30,11 @@ export interface Quote {
   avgVolume: number;
   updatedAt: number;
   freshness: DataFreshness;
+  /** Extended-hours info (live data mode). */
+  marketState?: MarketState;
+  /** Latest pre/post-market price when trading outside regular hours. */
+  extendedPrice?: number;
+  extendedChangePct?: number;
 }
 
 export interface CompanyInfo {
@@ -87,6 +94,21 @@ export interface ScanResult {
   patterns: PatternHit[];
   candles60: Candle[];
   summary: string;
+  // Enrichment computed in the same scan pass (avoids re-reading history):
+  marketCap: number;
+  pe: number | null;
+  avgVolume: number;
+  rsi: number;
+  macdBull: boolean;
+  maAligned: boolean;
+  relVol: number;
+}
+
+export interface ScanSnapshot {
+  at: number;
+  results: ScanResult[];
+  breadth: BreadthSummary;
+  universeSize: number;
 }
 
 export type PatternKind =
@@ -184,11 +206,10 @@ export interface UserProfile {
 export interface UserSettings {
   theme: "dark" | "light";
   beginnerMode: boolean;
+  /** How the app greets you. No accounts — everything lives in this browser. */
+  displayName: string;
   notifications: {
-    inApp: boolean;
-    push: boolean;
-    watchlistOnly: boolean;
-    minConfidence: number; // 0..1 threshold for pattern alerts
-    quietHours: boolean;
+    /** 0..1 confidence threshold for pattern alerts */
+    minConfidence: number;
   };
 }

@@ -1,19 +1,20 @@
-import React, { useState } from "react";
+import React from "react";
 import { FRESHNESS_HELP, provider } from "../lib/data/provider";
+import { getDataSourcePreference, liveFellBack, setDataSourcePreference } from "../lib/data/select";
+import { REAL_UNIVERSE, UNIVERSE } from "../lib/data/universe";
 import { useStore } from "../state/store";
 import { Seg, Switch, Tooltip } from "../components/ui";
-import { IconUsers } from "../components/icons";
 
 export default function Settings() {
-  const { user, users, settings, updateSettings, myInviteCode, logout, pushPermission, requestPush, updateNotifications } = useStore();
-  const [copied, setCopied] = useState(false);
+  const { settings, updateSettings } = useStore();
   const p = provider();
+  const pref = getDataSourcePreference();
 
   return (
     <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
       <div>
         <h1>Settings</h1>
-        <div className="muted small">Appearance, notifications, data source and account.</div>
+        <div className="muted small">Appearance, data source and about. No account needed — your watchlists and alerts live in this browser.</div>
       </div>
 
       <div className="card stack">
@@ -36,75 +37,63 @@ export default function Settings() {
           </div>
           <Switch checked={settings.beginnerMode} onChange={(v) => updateSettings({ beginnerMode: v })} />
         </div>
-      </div>
-
-      <div className="card stack">
-        <h2>Notifications</h2>
-        <div className="row between">
+        <div className="row between wrap">
           <div>
-            <div className="small" style={{ fontWeight: 650 }}>Device notifications</div>
-            <div className="faint">
-              Status: {pushPermission === "granted" ? "enabled" : pushPermission === "denied" ? "blocked in browser settings" : pushPermission === "unsupported" ? "not supported by this browser" : "not enabled yet"}
-            </div>
+            <div className="small" style={{ fontWeight: 650 }}>Your name</div>
+            <div className="faint">Just for the dashboard greeting.</div>
           </div>
-          {pushPermission === "default" && <button className="btn" onClick={() => void requestPush()}>Enable</button>}
-          {pushPermission === "granted" && (
-            <Switch checked={settings.notifications.push} onChange={(v) => updateNotifications({ push: v })} />
-          )}
+          <input
+            className="input" style={{ width: 180 }} maxLength={24}
+            value={settings.displayName}
+            onChange={(e) => updateSettings({ displayName: e.target.value || "Friend" })}
+          />
         </div>
-        <p className="faint" style={{ margin: 0 }}>
-          Architecture note: notifications are delivered through the service worker. In this prototype the alert engine runs in your browser against simulated data;
-          in production a backend scans the market and sends Web Push messages to the same service worker — no app changes needed. Install the app (Add to Home Screen)
-          to receive notifications like a native app.
-        </p>
       </div>
 
       <div className="card stack">
         <h2>Market data</h2>
+        <div className="row between wrap">
+          <div style={{ maxWidth: 440 }}>
+            <div className="small" style={{ fontWeight: 650 }}>Data source</div>
+            <div className="faint">
+              <b>Live</b> shows real prices (incl. pre/post market) for {REAL_UNIVERSE.length} well-known companies via our data relay.{" "}
+              <b>Simulated</b> covers the full {UNIVERSE.length.toLocaleString()}-stock S&P 500 + Russell 2000 universe with realistic generated data.
+            </div>
+          </div>
+          <Seg
+            options={[{ value: "live", label: "Live" }, { value: "sim", label: "Simulated" }] as const}
+            value={pref}
+            onChange={(v) => { if (v !== pref) setDataSourcePreference(v); }}
+          />
+        </div>
         <div className="row between">
           <div>
-            <div className="small" style={{ fontWeight: 650 }}>Active provider: {p.name}</div>
+            <div className="small" style={{ fontWeight: 650 }}>Active now: {p.name}</div>
             <div className="faint">{FRESHNESS_HELP[p.freshness]}</div>
           </div>
-          <span className="badge warn">{p.freshness}</span>
+          <span className={p.freshness === "simulated" ? "badge warn" : "badge up"}>{p.freshness}</span>
         </div>
+        {liveFellBack() && (
+          <div className="card small" style={{ background: "var(--warn-soft)", borderColor: "var(--warn)", margin: 0 }}>
+            Live data was selected but the data relay couldn't be reached, so this session is running on simulated data. It will retry next time you open the app.
+          </div>
+        )}
         <p className="faint" style={{ margin: 0 }}>
-          The app is built on a provider abstraction — quotes, candles and fundamentals all flow through one interface. Swapping in a real vendor
-          (Polygon, Finnhub, Alpaca…) is a config change, and every screen already labels data freshness honestly.
+          Everything flows through one provider interface — quotes, candles, fundamentals. Changing the source never changes how the scanner, patterns or education work.
+          In live mode, fundamentals (P/E, revenue…) are approximations and are labeled as such; prices and charts are real.
         </p>
       </div>
 
       <div className="card stack">
-        <h2><IconUsers className="icon" style={{ width: 17, height: 17, verticalAlign: -3 }} /> Friends & sharing</h2>
-        <div className="row between wrap">
-          <div>
-            <div className="small" style={{ fontWeight: 650 }}>Your invite code</div>
-            <div className="faint">Share this with a friend so they can create an account.</div>
-          </div>
-          <div className="row">
-            <code style={{ background: "var(--bg-input)", padding: "7px 12px", borderRadius: 8, fontWeight: 700, letterSpacing: "0.03em" }}>{myInviteCode}</code>
-            <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(myInviteCode); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
-              {copied ? "Copied!" : "Copy"}
-            </button>
-          </div>
-        </div>
-        <div className="faint">{users.length} account{users.length === 1 ? "" : "s"} on this device. Watchlists, alerts and settings are per-user. Stock pages are shareable by URL; shared watchlists are on the roadmap.</div>
+        <h2>About</h2>
+        <p className="small muted" style={{ margin: 0 }}>
+          Market Mentor scans the market for possible bullish setups, explains every signal in plain English, and teaches the patterns and indicators it uses.
+          It is educational and analytical software — <b>not financial advice</b>. Signals are probabilistic observations, never guarantees. Always do your own research.
+        </p>
+        <p className="faint" style={{ margin: 0 }}>
+          Open to everyone — no accounts. Your watchlists, alert rules and settings are saved in this browser only.
+        </p>
       </div>
-
-      <div className="card stack">
-        <h2>Account</h2>
-        <div className="row between">
-          <div>
-            <div className="small" style={{ fontWeight: 650 }}>{user?.displayName} <span className="faint">@{user?.username}</span></div>
-            <div className="faint">Joined {user ? new Date(user.createdAt).toLocaleDateString() : ""}</div>
-          </div>
-          <button className="btn danger" onClick={logout}>Sign out</button>
-        </div>
-      </div>
-
-      <p className="faint">
-        Market Mentor is educational and analytical software, not financial advice. Signals are probabilistic observations, never guarantees. Always do your own research.
-      </p>
     </div>
   );
 }

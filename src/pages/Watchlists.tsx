@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Quote } from "../lib/types";
 import { provider } from "../lib/data/provider";
-import { UNIVERSE } from "../lib/data/universe";
+import { findEntry } from "../lib/data/universe";
 import { classNames, fmtPct, fmtPrice, fmtVolume } from "../lib/utils";
 import { useStore } from "../state/store";
 import { EmptyState, Skeleton, Tooltip } from "../components/ui";
@@ -14,7 +14,7 @@ function AddSymbol({ onAdd, existing }: { onAdd: (sym: string) => void; existing
   const matches = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return [];
-    return UNIVERSE.filter(
+    return provider().getUniverse().filter(
       (u) => !existing.includes(u.symbol) && (u.symbol.toLowerCase().includes(s) || u.name.toLowerCase().includes(s))
     ).slice(0, 6);
   }, [q, existing]);
@@ -119,7 +119,7 @@ export default function Watchlists() {
                 <tbody>
                   {wl.symbols.map((sym) => {
                     const q = quotes.get(sym);
-                    const entry = UNIVERSE.find((u) => u.symbol === sym);
+                    const entry = findEntry(sym);
                     return (
                       <tr key={sym} onClick={() => nav(`/stock/${sym}`)}>
                         <td><span className="ticker-link">{sym}</span><div className="faint">{entry?.name}</div></td>

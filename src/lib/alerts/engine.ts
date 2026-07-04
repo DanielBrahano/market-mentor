@@ -62,7 +62,7 @@ export async function evaluateRules(
   minConfidence: number,
   seen: Set<string>,
 ): Promise<AlertEvent[]> {
-  const results = await scanUniverse();
+  const { results } = await scanUniverse();
   const bySymbol = new Map(results.map((r) => [r.symbol, r]));
   const events: AlertEvent[] = [];
   const today = new Date().toDateString();
@@ -123,7 +123,7 @@ export async function evaluateRules(
  * scanner spotlights, not watchlist alerts.
  */
 export async function scannerSpotlight(minConfidence: number, seen: Set<string>): Promise<AlertEvent[]> {
-  const results = await scanUniverse();
+  const { results } = await scanUniverse();
   const today = new Date().toDateString();
   const events: AlertEvent[] = [];
   const hits = results

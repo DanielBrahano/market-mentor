@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ScanResult } from "../lib/types";
+import type { ScanResult, ScanSnapshot } from "../lib/types";
 import { scanUniverse } from "../lib/scanner/engine";
 import { CANDLE_DOCS, PATTERN_DOCS } from "../content/education";
-import { classNames } from "../lib/utils";
+import { classNames, fmtPct, fmtPrice } from "../lib/utils";
 import { useStore } from "../state/store";
-import { ConfidenceBadge, EmptyState, Seg, SkeletonCard, Tooltip } from "../components/ui";
+import { ConfidenceBadge, EmptyState, Seg, Tooltip } from "../components/ui";
+import { ScanProgress } from "../components/ScanProgress";
 import { CandleShapes, MiniCandles } from "../components/charts/Sparkline";
 
 /** Illustrative SVG sketch for each chart pattern (idealized shape). */
-function PatternSketch({ kind }: { kind: string }) {
+function PatternSketch({ kind, size = 150 }: { kind: string; size?: number }) {
   const paths: Record<string, { d: string; extra?: React.ReactNode }> = {
     "head-and-shoulders": { d: "M5,60 L20,35 L32,48 L48,18 L64,48 L76,35 L92,62", extra: <line x1="26" y1="48" x2="72" y2="48" stroke="var(--purple)" strokeDasharray="3 3" strokeWidth="1.5" /> },
     "inverse-head-and-shoulders": { d: "M5,20 L20,45 L32,32 L48,62 L64,32 L76,45 L92,16", extra: <line x1="26" y1="32" x2="72" y2="32" stroke="var(--purple)" strokeDasharray="3 3" strokeWidth="1.5" /> },
@@ -25,30 +26,96 @@ function PatternSketch({ kind }: { kind: string }) {
   const p = paths[kind];
   if (!p) return null;
   return (
-    <svg viewBox="0 0 97 74" width="150" height="110" style={{ display: "block", background: "var(--bg-input)", borderRadius: 8 }}>
+    <svg viewBox="0 0 97 74" width={size} height={Math.round(size * 0.73)} style={{ display: "block", background: "var(--bg-input)", borderRadius: 8, flexShrink: 0 }}>
       {p.extra}
       <path d={p.d} fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-export default function Patterns() {
-  const [tab, setTab] = useState<"chart" | "candles" | "live">("chart");
-  const [scan, setScan] = useState<ScanResult[] | null>(null);
-  const { settings } = useStore();
+/** Leaderboard: for each pattern, the top companies currently showing it. */
+function PatternLeaderboard({ snap }: { snap: ScanSnapshot }) {
   const nav = useNavigate();
 
-  useEffect(() => {
-    if (tab !== "live" || scan) return;
-    let dead = false;
-    scanUniverse().then((r) => !dead && setScan(r));
-    return () => { dead = true; };
-  }, [tab, scan]);
+  const groups = useMemo(() => {
+    return PATTERN_DOCS.map((doc) => {
+      const hits = snap.results
+        .map((r) => {
+          const hit = r.patterns.find((p) => p.kind === doc.kind);
+          return hit ? { result: r, hit } : null;
+        })
+        .filter((x): x is { result: ScanResult; hit: ScanResult["patterns"][number] } => x !== null)
+        .sort((a, b) => b.hit.confidence - a.hit.confidence)
+        .slice(0, 5);
+      return { doc, hits };
+    }).sort((a, b) => b.hits.length - a.hits.length);
+  }, [snap]);
 
-  const liveHits = useMemo(
-    () => scan?.filter((r) => r.patterns.length > 0).sort((a, b) => b.patterns[0].confidence - a.patterns[0].confidence) ?? null,
-    [scan]
+  const totalHits = groups.reduce((n, g) => n + g.hits.length, 0);
+  if (totalHits === 0) {
+    return <EmptyState title="No patterns detected right now" hint="Clean patterns are genuinely rare — the engine rechecks the whole market as data updates." />;
+  }
+
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <p className="muted small" style={{ margin: 0 }}>
+        The strongest current matches for each pattern across all {snap.universeSize.toLocaleString()} scanned stocks, ranked by detection confidence.
+        Confidence measures how cleanly the shape fits the rules — <b>not</b> the odds of profit.
+      </p>
+      {groups.map(({ doc, hits }) => (
+        <div key={doc.kind} className="card pad-0">
+          <div className="row wrap" style={{ padding: "14px 16px 10px", gap: 12 }}>
+            <PatternSketch kind={doc.kind} size={84} />
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div className="row wrap" style={{ gap: 8 }}>
+                <h2>{doc.name}</h2>
+                <span className={classNames("badge", doc.bias === "bullish" ? "up" : doc.bias === "bearish" ? "down" : "neutral")}>{doc.bias}</span>
+                <span className="badge neutral">{hits.length ? `top ${hits.length}` : "0 found"}</span>
+                <Tooltip text={doc.what} />
+              </div>
+              <div className="faint" style={{ marginTop: 2 }}>{doc.psychology}</div>
+            </div>
+          </div>
+          {hits.length === 0 ? (
+            <div className="faint" style={{ padding: "0 16px 14px" }}>No stock currently matches this pattern cleanly — that's normal, patterns come and go.</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data">
+                <thead>
+                  <tr><th>#</th><th>Symbol</th><th>Price</th><th>Today</th><th>Confidence</th><th>Sector</th><th>Chart (60d)</th></tr>
+                </thead>
+                <tbody>
+                  {hits.map(({ result: r, hit }, i) => (
+                    <tr key={r.symbol} onClick={() => nav(`/stock/${r.symbol}`)}>
+                      <td className="mono faint">{i + 1}</td>
+                      <td><span className="ticker-link">{r.symbol}</span><div className="faint">{r.name}</div></td>
+                      <td className="mono">{fmtPrice(r.price)}</td>
+                      <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
+                      <td><ConfidenceBadge confidence={hit.confidence} /></td>
+                      <td className="faint">{r.sector}</td>
+                      <td><MiniCandles candles={r.candles60.slice(-45)} width={130} height={36} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
+}
+
+export default function Patterns() {
+  const [tab, setTab] = useState<"top" | "chart" | "candles">("top");
+  const [snap, setSnap] = useState<ScanSnapshot | null>(null);
+  const { settings } = useStore();
+
+  useEffect(() => {
+    let dead = false;
+    scanUniverse().then((s) => !dead && setSnap(s));
+    return () => { dead = true; };
+  }, []);
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -56,13 +123,13 @@ export default function Patterns() {
         <h1>Pattern Explorer</h1>
         <div className="muted small">
           {settings.beginnerMode
-            ? "Patterns are recurring price shapes created by crowd psychology. Learn what each one looks like, why it forms, and how our engine detects it — then see live detections."
-            : "Pattern reference, detection methodology, and live detections across the universe."}
+            ? "Patterns are recurring price shapes created by crowd psychology. See which companies show each pattern right now, and learn what every pattern means."
+            : "Per-pattern leaderboards across the scanned universe, plus the pattern reference."}
         </div>
       </div>
 
       <Seg
-        options={[{ value: "chart", label: "Chart patterns" }, { value: "candles", label: "Candlesticks" }, { value: "live", label: "Live detections" }] as const}
+        options={[{ value: "top", label: "Top stocks by pattern" }, { value: "chart", label: "Chart patterns guide" }, { value: "candles", label: "Candlesticks guide" }] as const}
         value={tab} onChange={setTab}
       />
 
@@ -72,6 +139,8 @@ export default function Patterns() {
           Confidence scores measure how cleanly a shape matches the rules, <b>not</b> the odds of profit. Use patterns as a reason to investigate, never as a signal to act blindly.
         </span>
       </div>
+
+      {tab === "top" && (snap ? <PatternLeaderboard snap={snap} /> : <ScanProgress label="Scanning the market for patterns" />)}
 
       {tab === "chart" && (
         <div className="grid cols-2">
@@ -120,38 +189,6 @@ export default function Patterns() {
             </div>
           ))}
         </div>
-      )}
-
-      {tab === "live" && (
-        <>
-          {!liveHits && <div className="grid cols-2"><SkeletonCard lines={4} /><SkeletonCard lines={4} /></div>}
-          {liveHits && liveHits.length === 0 && (
-            <EmptyState title="No patterns detected right now" hint="Clean patterns are genuinely rare — the engine rechecks the whole universe as data updates." />
-          )}
-          {liveHits && liveHits.length > 0 && (
-            <div className="grid cols-2">
-              {liveHits.map((r) => (
-                <div key={r.symbol} className="card" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
-                  <div className="row between">
-                    <div>
-                      <span className="ticker-link" style={{ fontSize: 15 }}>{r.symbol}</span>
-                      <span className="faint" style={{ marginLeft: 8 }}>{r.name}</span>
-                    </div>
-                    <ConfidenceBadge confidence={r.patterns[0].confidence} />
-                  </div>
-                  <div style={{ margin: "10px 0" }}><MiniCandles candles={r.candles60} width={420} height={80} /></div>
-                  <div className="row wrap" style={{ gap: 6 }}>
-                    {r.patterns.map((p) => (
-                      <span key={p.kind} className="badge accent">{p.label} · {Math.round(p.confidence * 100)}%</span>
-                    ))}
-                  </div>
-                  <p className="small muted" style={{ margin: "8px 0 0" }}>{r.patterns[0].explanation}</p>
-                  <p className="faint" style={{ margin: "6px 0 0" }}>Open the stock page to annotate this pattern on the full chart <Tooltip text="On the stock page, click the pattern in the 'Detected patterns' card to see its key points (peaks, necklines, rims) marked on the price chart." /></p>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
       )}
     </div>
   );

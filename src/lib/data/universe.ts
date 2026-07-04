@@ -1,4 +1,5 @@
 import type { UniverseId } from "../types";
+import { hashStr, mulberry32 } from "../utils";
 
 /**
  * Scan universe metadata. In production this list would be fetched from the
@@ -18,7 +19,12 @@ export interface UniverseEntry {
   /** bias applied to the simulated regime: >0 leans bullish, <0 bearish */
   drift: number;
   summary: string;
+  /** true for generated filler companies — excluded from live-data mode */
+  synthetic?: boolean;
 }
+
+export const S_AND_P_TARGET = 500;
+export const RUSSELL_TARGET = 1900;
 
 const sp = (
   symbol: string, name: string, sector: string, industry: string,
@@ -30,7 +36,7 @@ const rt = (
   basePrice: number, capB: number, drift: number, summary: string,
 ): UniverseEntry => ({ symbol, name, sector, industry, universe: "russell2000", basePrice, baseCap: capB * 1e9, drift, summary });
 
-export const UNIVERSE: UniverseEntry[] = [
+const CURATED: UniverseEntry[] = [
   // ---- S&P 500 representatives ----
   sp("AAPL", "Apple Inc.", "Technology", "Consumer Electronics", 228, 3450, 0.4, "Designs and sells iPhone, Mac, iPad, wearables and a growing services business spanning the App Store, iCloud and payments."),
   sp("MSFT", "Microsoft Corp.", "Technology", "Software — Infrastructure", 452, 3350, 0.7, "Builds Windows, Office 365 and the Azure cloud platform, with major investments in AI infrastructure and enterprise software."),
@@ -93,11 +99,167 @@ export const UNIVERSE: UniverseEntry[] = [
   rt("INSW", "International Seaways", "Energy", "Oil & Gas Midstream", 48, 2.4, 0.2, "Operates a fleet of crude and product tankers, with profits tied to shipping day-rates."),
   rt("PRCT", "PROCEPT BioRobotics", "Healthcare", "Medical Devices", 78, 4.2, 0.6, "Sells a surgical robot for treating enlarged prostates, expanding hospital adoption."),
   rt("WULF", "TeraWulf Inc.", "Technology", "Data Infrastructure", 6.8, 2.6, 0.7, "Runs zero-carbon data centers pivoting from bitcoin mining toward AI compute hosting."),
+  // Additional well-known S&P constituents
+  sp("TMO", "Thermo Fisher Scientific", "Healthcare", "Diagnostics & Research", 540, 205, 0.2, "Supplies lab instruments, reagents and services to pharma and research labs worldwide."),
+  sp("ABT", "Abbott Laboratories", "Healthcare", "Medical Devices", 122, 212, 0.3, "Diversified healthcare company spanning medical devices, diagnostics and nutrition."),
+  sp("CSCO", "Cisco Systems", "Technology", "Communication Equipment", 62, 245, 0.2, "Networking-equipment leader expanding into security and observability software."),
+  sp("QCOM", "Qualcomm Inc.", "Technology", "Semiconductors", 168, 185, 0.2, "Designs smartphone chips and modems, expanding into automotive and PC processors."),
+  sp("TXN", "Texas Instruments", "Technology", "Semiconductors", 195, 178, 0.1, "Makes analog and embedded chips used across industrial and automotive markets."),
+  sp("IBM", "IBM Corp.", "Technology", "Information Technology Services", 255, 235, 0.5, "Enterprise software, consulting and mainframes with a growing hybrid-cloud and AI business."),
+  sp("NOW", "ServiceNow Inc.", "Technology", "Software — Application", 1050, 216, 0.6, "Workflow-automation platform for enterprise IT, HR and customer service."),
+  sp("PLTR", "Palantir Technologies", "Technology", "Software — Infrastructure", 145, 330, 1.0, "Data-analytics platforms for governments and enterprises, riding AI adoption."),
+  sp("PANW", "Palo Alto Networks", "Technology", "Software — Infrastructure", 195, 130, 0.5, "Cybersecurity platform spanning network, cloud and security operations."),
+  sp("MU", "Micron Technology", "Technology", "Semiconductors", 115, 128, 0.4, "Memory-chip maker whose DRAM and HBM products feed AI data centers."),
+  sp("AMAT", "Applied Materials", "Technology", "Semiconductor Equipment", 175, 145, 0.3, "The largest maker of chip-manufacturing equipment."),
+  sp("BAC", "Bank of America", "Financial Services", "Banks — Diversified", 47, 360, 0.3, "The second-largest U.S. bank, serving consumers and corporations."),
+  sp("WFC", "Wells Fargo & Co.", "Financial Services", "Banks — Diversified", 78, 260, 0.4, "Major U.S. consumer and commercial bank emerging from years of regulatory caps."),
+  sp("MS", "Morgan Stanley", "Financial Services", "Capital Markets", 135, 218, 0.4, "Investment bank with a huge wealth-management arm."),
+  sp("SCHW", "Charles Schwab", "Financial Services", "Capital Markets", 82, 148, 0.3, "The largest U.S. retail brokerage and RIA custodian."),
+  sp("BLK", "BlackRock Inc.", "Financial Services", "Asset Management", 1050, 162, 0.4, "The world's largest asset manager and home of the iShares ETF family."),
+  sp("AXP", "American Express", "Financial Services", "Credit Services", 300, 212, 0.4, "Premium card network with an affluent customer base."),
+  sp("C", "Citigroup Inc.", "Financial Services", "Banks — Diversified", 82, 155, 0.3, "Global bank in the middle of a multi-year restructuring."),
+  sp("PYPL", "PayPal Holdings", "Financial Services", "Credit Services", 78, 78, -0.1, "Digital-payments platform working to reignite branded-checkout growth."),
+  sp("T", "AT&T Inc.", "Communication Services", "Telecom Services", 24, 172, 0.2, "Telecom giant focused on 5G wireless and fiber broadband."),
+  sp("VZ", "Verizon Communications", "Communication Services", "Telecom Services", 42, 177, 0.0, "The largest U.S. wireless carrier by subscribers, with a large dividend."),
+  sp("CMCSA", "Comcast Corp.", "Communication Services", "Entertainment", 36, 138, -0.2, "Cable, broadband and NBCUniversal media conglomerate."),
+  sp("TMUS", "T-Mobile US", "Communication Services", "Telecom Services", 240, 275, 0.5, "Wireless carrier that took share after the Sprint merger."),
+  sp("LOW", "Lowe's Companies", "Consumer Cyclical", "Home Improvement Retail", 245, 138, 0.2, "The number-two home-improvement retailer."),
+  sp("SBUX", "Starbucks Corp.", "Consumer Cyclical", "Restaurants", 92, 105, -0.2, "Global coffee chain executing a back-to-basics turnaround."),
+  sp("TGT", "Target Corp.", "Consumer Defensive", "Discount Stores", 105, 48, -0.3, "General-merchandise retailer known for style-forward private brands."),
+  sp("BKNG", "Booking Holdings", "Consumer Cyclical", "Travel Services", 4900, 165, 0.5, "Parent of Booking.com, Priceline and OpenTable."),
+  sp("ABNB", "Airbnb Inc.", "Consumer Cyclical", "Travel Services", 135, 85, 0.1, "Marketplace for short-term home rentals and experiences."),
+  sp("CL", "Colgate-Palmolive", "Consumer Defensive", "Household Products", 92, 75, 0.1, "Oral-care and household-products staple sold in nearly every country."),
+  sp("MDLZ", "Mondelez International", "Consumer Defensive", "Confectioners", 62, 82, 0.0, "Snacking giant behind Oreo, Cadbury and Ritz."),
+  sp("UNP", "Union Pacific", "Industrials", "Railroads", 235, 142, 0.2, "One of two major western U.S. freight railroads."),
+  sp("HON", "Honeywell International", "Industrials", "Conglomerates", 215, 140, 0.1, "Industrial conglomerate in aerospace, automation and materials, planning a three-way split."),
+  sp("RTX", "RTX Corp.", "Industrials", "Aerospace & Defense", 132, 176, 0.4, "Defense and aerospace giant behind Patriot missiles and Pratt & Whitney engines."),
+  sp("LMT", "Lockheed Martin", "Industrials", "Aerospace & Defense", 470, 112, 0.2, "The largest defense contractor, maker of the F-35."),
+  sp("DE", "Deere & Co.", "Industrials", "Farm & Heavy Machinery", 470, 128, 0.4, "Farm-equipment leader pushing autonomous and precision agriculture."),
+  sp("UPS", "United Parcel Service", "Industrials", "Integrated Freight", 105, 90, -0.3, "Global parcel-delivery network resetting costs after volume declines."),
+  sp("AMGN", "Amgen Inc.", "Healthcare", "Drug Manufacturers", 295, 158, 0.2, "Biotech pioneer with a broad portfolio and obesity-drug ambitions."),
+  sp("ISRG", "Intuitive Surgical", "Healthcare", "Medical Devices", 555, 198, 0.6, "Maker of the da Vinci surgical robot."),
+  sp("GILD", "Gilead Sciences", "Healthcare", "Drug Manufacturers", 112, 140, 0.4, "Antiviral leader (HIV, hepatitis) expanding in oncology."),
+  sp("COP", "ConocoPhillips", "Energy", "Oil & Gas E&P", 98, 115, 0.1, "Large independent oil-and-gas producer with global assets."),
+  sp("SLB", "Schlumberger", "Energy", "Oil & Gas Equipment", 38, 54, -0.1, "The largest oilfield-services company."),
+  sp("NEE", "NextEra Energy", "Utilities", "Utilities — Regulated", 72, 148, 0.2, "Florida utility plus the world's largest renewables developer."),
+  sp("DUK", "Duke Energy", "Utilities", "Utilities — Regulated", 118, 91, 0.1, "Regulated electric utility across the U.S. Southeast."),
+  sp("LIN", "Linde plc", "Basic Materials", "Specialty Chemicals", 460, 220, 0.3, "The largest industrial-gases company."),
+  sp("SHW", "Sherwin-Williams", "Basic Materials", "Specialty Chemicals", 355, 90, 0.2, "Paint and coatings leader serving pros and DIY."),
+  sp("PLD", "Prologis Inc.", "Real Estate", "REIT — Industrial", 118, 110, 0.0, "The largest warehouse/logistics real-estate owner."),
+  sp("AMT", "American Tower", "Real Estate", "REIT — Specialty", 195, 91, 0.0, "Global cell-tower REIT leasing to wireless carriers."),
+];
+
+/**
+ * Synthetic fill-out: the curated names above are real, well-known companies;
+ * the rest of the S&P 500 / Russell 2000 universe is generated deterministically
+ * with plausible names so the scanner covers full-market breadth. All prices
+ * are simulated either way, and the app labels data as simulated everywhere.
+ */
+const SECTOR_INDUSTRIES: Record<string, string[]> = {
+  "Technology": ["Software — Application", "Software — Infrastructure", "Semiconductors", "Semiconductor Equipment", "IT Services", "Computer Hardware", "Electronic Components"],
+  "Healthcare": ["Biotechnology", "Medical Devices", "Diagnostics & Research", "Drug Manufacturers", "Healthcare Plans", "Medical Instruments"],
+  "Financial Services": ["Banks — Regional", "Capital Markets", "Insurance — Property & Casualty", "Credit Services", "Asset Management", "Insurance — Life"],
+  "Consumer Cyclical": ["Specialty Retail", "Apparel Retail", "Restaurants", "Auto Parts", "Leisure", "Internet Retail", "Residential Construction"],
+  "Consumer Defensive": ["Packaged Foods", "Household Products", "Discount Stores", "Beverages", "Farm Products", "Food Distribution"],
+  "Industrials": ["Specialty Industrial Machinery", "Aerospace & Defense", "Engineering & Construction", "Trucking", "Electrical Equipment", "Waste Management", "Building Products"],
+  "Energy": ["Oil & Gas E&P", "Oil & Gas Equipment", "Oil & Gas Midstream", "Oil & Gas Refining"],
+  "Basic Materials": ["Specialty Chemicals", "Steel", "Copper", "Agricultural Inputs", "Building Materials"],
+  "Real Estate": ["REIT — Residential", "REIT — Industrial", "REIT — Office", "REIT — Retail", "Real Estate Services"],
+  "Utilities": ["Utilities — Regulated", "Utilities — Renewable", "Utilities — Diversified"],
+  "Communication Services": ["Telecom Services", "Entertainment", "Advertising Agencies", "Broadcasting", "Internet Content"],
+};
+
+const NAME_A = ["Apex", "Meridian", "Summit", "Cascade", "Pinnacle", "Vertex", "Horizon", "Sterling", "Beacon", "Granite", "Atlas", "Crestline", "Ridgeway", "Bluepeak", "Ironbridge", "Silverline", "Northfield", "Eastport", "Westbrook", "Lakeshore", "Redwood", "Stonegate", "Fairhaven", "Brightwater", "Clearfield", "Oakmont", "Maplewood", "Highland", "Riverton", "Kingsley", "Halcyon", "Titanium", "Solstice", "Equinox", "Polaris", "Aurora", "Zenith", "Corerock", "Trailhead", "Quarry", "Harbor", "Foundry", "Keystone", "Landmark", "Trueline", "Vanguard", "Frontier", "Heritage", "Liberty", "Pioneer"];
+const NAME_B: Record<string, string[]> = {
+  "Technology": ["Systems", "Software", "Technologies", "Digital", "Data", "Networks", "Semiconductor", "Computing", "Analytics", "Robotics"],
+  "Healthcare": ["Therapeutics", "Biosciences", "Medical", "Health", "Pharma", "Diagnostics", "Biologics", "Genomics", "Surgical", "Care"],
+  "Financial Services": ["Financial", "Bancorp", "Capital", "Holdings", "Insurance", "Trust", "Credit", "Asset Partners", "Securities", "Savings"],
+  "Consumer Cyclical": ["Brands", "Retail", "Outfitters", "Hospitality", "Restaurants", "Motors", "Leisure", "Stores", "Commerce", "Goods"],
+  "Consumer Defensive": ["Foods", "Beverage", "Consumer", "Farms", "Grocers", "Household", "Nutrition", "Provisions", "Mills", "Markets"],
+  "Industrials": ["Industries", "Manufacturing", "Engineering", "Aerospace", "Logistics", "Machinery", "Fabrication", "Dynamics", "Works", "Infrastructure"],
+  "Energy": ["Energy", "Resources", "Petroleum", "Drilling", "Exploration", "Midstream", "Fuels", "Oilfield", "Power", "Gas Partners"],
+  "Basic Materials": ["Materials", "Chemicals", "Mining", "Metals", "Minerals", "Polymers", "Alloys", "Aggregates", "Specialty Materials", "Resources"],
+  "Real Estate": ["Properties", "Realty", "REIT", "Land", "Communities", "Development", "Real Estate", "Estates", "Holdings", "Spaces"],
+  "Utilities": ["Utilities", "Power", "Electric", "Water Works", "Energy Partners", "Grid", "Light & Power", "Gas & Electric", "Renewables", "Hydro"],
+  "Communication Services": ["Media", "Communications", "Broadcasting", "Telecom", "Interactive", "Studios", "Wireless", "Publishing", "Networks", "Entertainment"],
+};
+const SUFFIX = ["Inc.", "Corp.", "Group", "Co.", "Holdings", "plc", "Ltd."];
+
+const SUMMARY_TPL: Record<string, string[]> = {
+  "Technology": ["Provides {ind} products serving mid-market and enterprise customers.", "Builds {ind} platforms with a growing subscription business."],
+  "Healthcare": ["Develops {ind} solutions targeting specialty clinical markets.", "Commercial-stage {ind} company expanding hospital adoption."],
+  "Financial Services": ["Regional {ind} franchise with a conservative balance sheet.", "Focused {ind} firm serving small businesses and consumers."],
+  "Consumer Cyclical": ["Operates {ind} concepts across North America.", "Consumer {ind} brand growing through e-commerce and wholesale."],
+  "Consumer Defensive": ["Produces branded {ind} staples with steady repeat demand.", "Value-focused {ind} operator with loyal customers."],
+  "Industrials": ["Supplies {ind} to construction, energy and transport markets.", "Niche {ind} manufacturer with strong aftermarket revenue."],
+  "Energy": ["Independent {ind} operator with basin-focused assets.", "Provides {ind} services tied to drilling and completion activity."],
+  "Basic Materials": ["Produces {ind} for industrial and consumer end-markets.", "Regional {ind} supplier with cost-advantaged operations."],
+  "Real Estate": ["Owns and operates {ind} assets in growth markets.", "Focused {ind} portfolio with long-duration leases."],
+  "Utilities": ["Regulated {ind} serving a growing service territory.", "Operates {ind} assets with inflation-linked returns."],
+  "Communication Services": ["Runs {ind} properties monetized by advertising and subscriptions.", "Regional {ind} operator investing in digital distribution."],
+};
+
+function genSynthetic(count: number, universeId: UniverseId, usedSymbols: Set<string>): UniverseEntry[] {
+  const rng = mulberry32(hashStr(`synth:${universeId}`));
+  const sectors = Object.keys(SECTOR_INDUSTRIES);
+  const out: UniverseEntry[] = [];
+  while (out.length < count) {
+    const sector = sectors[Math.floor(rng() * sectors.length)];
+    const inds = SECTOR_INDUSTRIES[sector];
+    const industry = inds[Math.floor(rng() * inds.length)];
+    const a = NAME_A[Math.floor(rng() * NAME_A.length)];
+    const b = NAME_B[sector][Math.floor(rng() * NAME_B[sector].length)];
+    const name = `${a} ${b} ${SUFFIX[Math.floor(rng() * SUFFIX.length)]}`;
+    // Ticker from name initials + random letters, 3-4 chars, unique.
+    let symbol = "";
+    for (let attempt = 0; attempt < 30 && !symbol; attempt++) {
+      const letters = (a + b).replace(/[^A-Za-z]/g, "").toUpperCase();
+      const len = 3 + Math.floor(rng() * 2);
+      let s = letters.slice(0, 2);
+      while (s.length < len) s += String.fromCharCode(65 + Math.floor(rng() * 26));
+      if (!usedSymbols.has(s)) symbol = s;
+    }
+    if (!symbol) continue;
+    usedSymbols.add(symbol);
+    const isLarge = universeId === "sp500";
+    const basePrice = isLarge ? 25 + rng() * 400 : 3 + rng() * 120;
+    const capB = isLarge ? 8 + rng() * 180 : 0.25 + rng() * 4.5;
+    const drift = Math.round((-0.75 + rng() * 1.8) * 100) / 100;
+    const tpl = SUMMARY_TPL[sector][Math.floor(rng() * SUMMARY_TPL[sector].length)];
+    out.push({
+      symbol,
+      name,
+      sector,
+      industry,
+      universe: universeId,
+      basePrice: Math.round(basePrice * 100) / 100,
+      baseCap: capB * 1e9,
+      drift,
+      summary: tpl.replace("{ind}", industry.toLowerCase()),
+      synthetic: true,
+    });
+  }
+  return out;
+}
+
+const used = new Set(CURATED.map((c) => c.symbol));
+const spCurated = CURATED.filter((c) => c.universe === "sp500").length;
+const rtCurated = CURATED.filter((c) => c.universe === "russell2000").length;
+
+export const UNIVERSE: UniverseEntry[] = [
+  ...CURATED,
+  ...genSynthetic(Math.max(0, S_AND_P_TARGET - spCurated), "sp500", used),
+  ...genSynthetic(Math.max(0, RUSSELL_TARGET - rtCurated), "russell2000", used),
 ];
 
 export const SECTORS = Array.from(new Set(UNIVERSE.map((u) => u.sector))).sort();
 export const INDUSTRIES = Array.from(new Set(UNIVERSE.map((u) => u.industry))).sort();
 
+/** Real, curated companies only — the universe used in live-data mode. */
+export const REAL_UNIVERSE = UNIVERSE.filter((u) => !u.synthetic);
+
+const BY_SYMBOL = new Map(UNIVERSE.map((u) => [u.symbol, u]));
+
 export function findEntry(symbol: string): UniverseEntry | undefined {
-  return UNIVERSE.find((u) => u.symbol === symbol);
+  return BY_SYMBOL.get(symbol);
 }

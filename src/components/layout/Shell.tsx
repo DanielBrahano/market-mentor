@@ -3,10 +3,10 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useStore } from "../../state/store";
 import { DataSourceBadge } from "../ui";
 import {
-  IconBell, IconDashboard, IconLearn, IconLogout, IconPattern,
+  IconBell, IconDashboard, IconLearn, IconPattern,
   IconScreener, IconSearch, IconSettings, IconWatchlist,
 } from "../icons";
-import { UNIVERSE } from "../../lib/data/universe";
+import { provider } from "../../lib/data/provider";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: IconDashboard, end: true },
@@ -27,7 +27,9 @@ function TickerSearch() {
   const matches = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return [];
-    return UNIVERSE.filter((u) => u.symbol.toLowerCase().includes(s) || u.name.toLowerCase().includes(s)).slice(0, 7);
+    return provider().getUniverse()
+      .filter((u) => u.symbol.toLowerCase().includes(s) || u.name.toLowerCase().includes(s))
+      .slice(0, 7);
   }, [q]);
   return (
     <div style={{ position: "relative", flex: 1, maxWidth: 380 }}>
@@ -75,7 +77,7 @@ function TickerSearch() {
 }
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { user, logout, unreadCount } = useStore();
+  const { unreadCount } = useStore();
   const [installEvent, setInstallEvent] = useState<any>(null);
 
   useEffect(() => {
@@ -108,11 +110,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         )}
         <div className="sidebar-footer">
-          <div className="row between">
-            <span style={{ fontWeight: 600, color: "var(--text-dim)" }}>{user?.displayName}</span>
-            <button className="btn ghost sm" onClick={logout} title="Sign out"><IconLogout className="icon" style={{ width: 15, height: 15 }} /></button>
-          </div>
-          <div style={{ marginTop: 6 }}>Educational software — not financial advice.</div>
+          Educational software — not financial advice.
         </div>
       </aside>
 
@@ -126,7 +124,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <footer className="disclaimer">
           <b>Disclaimer:</b> Market Mentor is educational and analytical software. Nothing here is financial advice or a recommendation to buy or sell any security.
           Scanner scores, pattern detections and alerts are probabilistic observations about historical price behavior — they can and do fail. Always do your own research
-          and consider consulting a licensed financial advisor before investing. This prototype displays simulated market data.
+          and consider consulting a licensed financial advisor before investing.{" "}
+          {provider().freshness === "simulated"
+            ? "This session is showing simulated market data."
+            : "Live prices are near real-time and may differ slightly from your broker."}
         </footer>
       </div>
 

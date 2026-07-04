@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AlertRuleKind } from "../lib/types";
 import { RULE_META } from "../lib/alerts/engine";
-import { UNIVERSE } from "../lib/data/universe";
-import { fmtTimeAgo, classNames } from "../lib/utils";
+import { REAL_UNIVERSE } from "../lib/data/universe";
+import { fmtTimeAgo } from "../lib/utils";
 import { useStore } from "../state/store";
 import { ConfidenceBadge, Drawer, EmptyState, Switch, Tooltip } from "../components/ui";
 import { IconBell, IconPlus } from "../components/icons";
@@ -11,7 +11,7 @@ import { IconBell, IconPlus } from "../components/icons";
 export default function Alerts() {
   const {
     alerts, alertRules, addRule, toggleRule, removeRule, markAllRead, markRead, clearAlerts,
-    simulateAlertNow, settings, pushPermission, requestPush, updateNotifications, watchedSymbols,
+    simulateAlertNow, settings, updateNotifications, watchedSymbols,
   } = useStore();
   const [openAlert, setOpenAlert] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -38,8 +38,8 @@ export default function Alerts() {
           <h1>Alerts</h1>
           <div className="muted small">
             {settings.beginnerMode
-              ? "Rules watch your stocks in the background and notify you when something technically interesting happens — with an explanation of what it means."
-              : "Alert rules, delivery preferences and history."}
+              ? "Rules watch your stocks in the background and flag it here when something technically interesting happens — with an explanation of what it means."
+              : "Alert rules, thresholds and history."}
           </div>
         </div>
         <div className="row">
@@ -49,23 +49,6 @@ export default function Alerts() {
       </div>
 
       {checkResult && <div className="card small" style={{ padding: "10px 14px" }}>{checkResult}</div>}
-
-      {/* Push setup banner */}
-      {pushPermission !== "granted" && (
-        <div className="card" style={{ borderColor: "var(--accent)" }}>
-          <div className="row between wrap">
-            <div>
-              <b className="small">Enable notifications on this device</b>
-              <div className="muted small" style={{ maxWidth: 560 }}>
-                Get OS-level notifications when your watchlist stocks trigger alert rules — including when the app is installed to your home screen.
-                {pushPermission === "denied" && " Notifications are currently blocked in your browser settings for this site."}
-                {pushPermission === "unsupported" && " Your browser doesn't support notifications."}
-              </div>
-            </div>
-            {pushPermission === "default" && <button className="btn primary" onClick={() => void requestPush()}>Enable notifications</button>}
-          </div>
-        </div>
-      )}
 
       <div className="grid" style={{ gridTemplateColumns: "1.4fr 1fr", alignItems: "start" }}>
         {/* History */}
@@ -113,7 +96,7 @@ export default function Alerts() {
           <div className="card">
             <div className="card-title">
               <h2>My rules</h2>
-              <Tooltip text="Rules run automatically against fresh data (every ~90 seconds in this prototype; server-side in production). 'Any watchlist stock' applies the rule to everything you watch." />
+              <Tooltip text="Rules run automatically against fresh data every few minutes while the app is open. 'Any watchlist stock' applies the rule to everything you watch." />
             </div>
             {alertRules.length === 0 ? (
               <EmptyState title="No rules" hint="Add a rule to start receiving alerts." />
@@ -135,19 +118,11 @@ export default function Alerts() {
             )}
           </div>
 
-          {/* Notification prefs */}
+          {/* Alert threshold */}
           <div className="card stack">
             <div className="card-title" style={{ marginBottom: 0 }}>
-              <h2>Notification preferences</h2>
+              <h2>Alert threshold</h2>
             </div>
-            <Switch checked={settings.notifications.inApp} onChange={(v) => updateNotifications({ inApp: v })} label="In-app alert feed" />
-            <Switch
-              checked={settings.notifications.push && pushPermission === "granted"}
-              onChange={(v) => (v && pushPermission !== "granted" ? void requestPush() : updateNotifications({ push: v }))}
-              label="Device notifications (web push)"
-            />
-            <Switch checked={settings.notifications.watchlistOnly} onChange={(v) => updateNotifications({ watchlistOnly: v })} label="Watchlist stocks only" />
-            <Switch checked={settings.notifications.quietHours} onChange={(v) => updateNotifications({ quietHours: v })} label="Quiet mode (log alerts, don't notify)" />
             <label className="field">
               Minimum pattern confidence: {Math.round(settings.notifications.minConfidence * 100)}%
               <input
@@ -158,7 +133,7 @@ export default function Alerts() {
               <span className="faint" style={{ fontWeight: 400 }}>Pattern alerts only fire at or above this confidence. Higher = fewer but cleaner alerts.</span>
             </label>
             <p className="faint" style={{ margin: 0 }}>
-              In this prototype, alert checks run in your browser against simulated data and deliver through the service worker — the same notification pipeline a production backend would push to.
+              Alerts are checked while the app is open and shown in this feed. Device push notifications are switched off in this version.
             </p>
           </div>
         </div>
@@ -208,8 +183,9 @@ export default function Alerts() {
               Applies to
               <select className="input" value={newSymbol} onChange={(e) => setNewSymbol(e.target.value)}>
                 <option value="ANY_WATCHLIST">Any watchlist stock</option>
-                {UNIVERSE.map((u) => <option key={u.symbol} value={u.symbol}>{u.symbol} — {u.name}</option>)}
+                {REAL_UNIVERSE.map((u) => <option key={u.symbol} value={u.symbol}>{u.symbol} — {u.name}</option>)}
               </select>
+              <span className="faint" style={{ fontWeight: 400 }}>Single-stock rules list the curated companies; watchlist rules cover anything you add from the full scan.</span>
             </label>
             <button className="btn primary" onClick={() => { addRule({ kind: newKind, symbol: newSymbol, enabled: true }); setShowNew(false); }}>
               Create rule

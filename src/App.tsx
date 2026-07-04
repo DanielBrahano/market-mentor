@@ -1,9 +1,7 @@
 import React, { Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useStore } from "./state/store";
 import { Shell } from "./components/layout/Shell";
 import { SkeletonCard } from "./components/ui";
-import Login from "./pages/Login";
 
 const Dashboard = React.lazy(() => import("./pages/Dashboard"));
 const Screener = React.lazy(() => import("./pages/Screener"));
@@ -26,10 +24,7 @@ function Fallback() {
 }
 
 export default function App() {
-  const { user } = useStore();
   const location = useLocation();
-
-  if (!user) return <Login />;
 
   return (
     <Shell>

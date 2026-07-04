@@ -170,8 +170,25 @@ export default function StockDetail() {
             <span className={classNames("mono", up ? "up" : "down")} style={{ fontSize: 16, fontWeight: 650 }}>
               {fmtChange(quote.change)} ({fmtPct(quote.changePct)})
             </span>
+            {quote.marketState && quote.marketState !== "REGULAR" && (
+              <span className="badge neutral">
+                {quote.marketState === "PRE" ? "Pre-market" : quote.marketState === "POST" ? "After hours" : "Market closed"}
+              </span>
+            )}
             <DataSourceBadge />
           </div>
+          {quote.extendedPrice != null && (quote.marketState === "PRE" || quote.marketState === "POST") && (
+            <div className="row wrap" style={{ marginTop: 4, gap: 8 }}>
+              <span className="muted small" style={{ fontWeight: 650 }}>
+                {quote.marketState === "PRE" ? "Pre-market:" : "After hours:"}
+              </span>
+              <span className="mono small" style={{ fontWeight: 700 }}>{fmtPrice(quote.extendedPrice)}</span>
+              <span className={classNames("mono small", (quote.extendedChangePct ?? 0) >= 0 ? "up" : "down")} style={{ fontWeight: 650 }}>
+                {fmtPct(quote.extendedChangePct ?? 0)}
+              </span>
+              <Tooltip text="Trading that happens before 9:30am or after 4:00pm ET. Volume is thinner, so prices can move on very little activity — treat extended-hours moves with extra caution." />
+            </div>
+          )}
         </div>
         <div className="row">
           <button className="btn" onClick={() => { navigator.clipboard?.writeText(window.location.href); }} title="Copy link to share">

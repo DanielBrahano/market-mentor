@@ -21,7 +21,14 @@ interface SymState {
   quote: Quote;
 }
 
+/**
+ * LRU cache of generated symbol states. The universe is ~2,400 symbols; we
+ * keep only the most recently used full histories in memory. Eviction is
+ * safe because generation is deterministic — the same symbol regenerates
+ * byte-identical data.
+ */
 const cache = new Map<string, SymState>();
+const CACHE_MAX = 120;
 
 /** Last trading day at or before today (skip weekends). */
 function lastTradingDay(): number {
@@ -120,7 +127,12 @@ function round2(n: number): number {
 
 function state(symbol: string): SymState {
   let s = cache.get(symbol);
-  if (s) return s;
+  if (s) {
+    // refresh LRU position
+    cache.delete(symbol);
+    cache.set(symbol, s);
+    return s;
+  }
   const e = findEntry(symbol);
   if (!e) throw new Error(`Unknown symbol ${symbol}`);
   const daily = genDaily(e);
@@ -145,6 +157,10 @@ function state(symbol: string): SymState {
     },
   };
   cache.set(symbol, s);
+  if (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
   return s;
 }
 
@@ -157,8 +173,7 @@ function ensureTicker() {
   tickTimer = window.setInterval(() => {
     for (const [symbol, subs] of tickListeners) {
       if (subs.size === 0) continue;
-      const s = cache.get(symbol);
-      if (!s) continue;
+      const s = state(symbol); // regenerates if LRU-evicted
       const q = s.quote;
       const drift = (Math.random() - 0.5) * q.price * 0.0009;
       const price = round2(Math.max(0.4, q.price + drift));

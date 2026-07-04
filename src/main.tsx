@@ -5,24 +5,48 @@ import App from "./App";
 import { StoreProvider } from "./state/store";
 import { setProvider } from "./lib/data/provider";
 import { mockProvider } from "./lib/data/mockProvider";
+import { liveProvider, WORKER_BASE } from "./lib/data/liveProvider";
+import { getDataSourcePreference, markLiveFallback } from "./lib/data/select";
 import "./styles/global.css";
 
-// Register the active market-data provider. Swapping to a real vendor later
-// is a one-line change here (plus the new provider implementation).
-setProvider(mockProvider);
+/**
+ * Bootstrap: pick the market-data provider before rendering.
+ * Live (real quotes incl. pre/post market, via the data relay) is the default;
+ * if the relay is unreachable we fall back to the simulated full-market feed
+ * for this session and say so in Settings.
+ */
+async function boot() {
+  if (getDataSourcePreference() === "live") {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 3500);
+      const res = await fetch(`${WORKER_BASE}/health`, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error("unhealthy");
+      setProvider(liveProvider);
+    } catch {
+      markLiveFallback();
+      setProvider(mockProvider);
+    }
+  } else {
+    setProvider(mockProvider);
+  }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <StoreProvider>
-        <App />
-      </StoreProvider>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <StoreProvider>
+          <App />
+        </StoreProvider>
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+}
 
-// PWA: register the service worker (app-shell cache + push handlers).
-if ("serviceWorker" in navigator && !location.hostname.includes("stackblitz")) {
+void boot();
+
+// PWA: register the service worker (app-shell cache for offline/installed use).
+if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(() => { /* dev mode without SW is fine */ });
   });

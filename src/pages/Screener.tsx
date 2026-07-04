@@ -2,12 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ScanResult } from "../lib/types";
 import { scanUniverse, scoreBand } from "../lib/scanner/engine";
-import { provider } from "../lib/data/provider";
-import { computeBundle, relativeVolume } from "../lib/indicators/core";
 import { SECTORS } from "../lib/data/universe";
 import { classNames, fmtBig, fmtPct, fmtPrice } from "../lib/utils";
 import { useStore } from "../state/store";
-import { ConfidenceBadge, EmptyState, ScoreBar, Skeleton, Tooltip, Seg } from "../components/ui";
+import { ConfidenceBadge, EmptyState, ScoreBar, Tooltip, Seg } from "../components/ui";
+import { ScanProgress } from "../components/ScanProgress";
 import { MiniCandles } from "../components/charts/Sparkline";
 import { IconStar } from "../components/icons";
 
@@ -35,57 +34,26 @@ const DEFAULT_FILTERS: Filters = {
   macdBull: false, maAligned: false, relVolMin: "", withPattern: false, minScore: 0,
 };
 
-interface EnrichedRow extends ScanResult {
-  marketCap: number;
-  pe: number | null;
-  avgVolume: number;
-  rsi: number;
-  macdBull: boolean;
-  maAligned: boolean;
-  relVol: number;
-}
-
 type SortKey = "symbol" | "price" | "changePct" | "score" | "marketCap" | "pe" | "rsi" | "relVol";
+const PAGE = 100;
 
 export default function Screener() {
-  const [rows, setRows] = useState<EnrichedRow[] | null>(null);
+  const [rows, setRows] = useState<ScanResult[] | null>(null);
+  const [universeSize, setUniverseSize] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const [saveName, setSaveName] = useState("");
   const [showFilters, setShowFilters] = useState(true);
+  const [limit, setLimit] = useState(PAGE);
   const { savedScreens, saveScreen, deleteScreen, isWatched, watchlists, toggleSymbol, settings } = useStore();
   const nav = useNavigate();
 
   useEffect(() => {
     let dead = false;
-    (async () => {
-      try {
-        const p = provider();
-        const results = await scanUniverse();
-        const enriched: EnrichedRow[] = [];
-        for (const r of results) {
-          const [company, quote, daily] = await Promise.all([
-            p.getCompany(r.symbol), p.getQuote(r.symbol), p.getDailyHistory(r.symbol),
-          ]);
-          const b = computeBundle(daily);
-          const last = (xs: number[]) => xs[xs.length - 1];
-          enriched.push({
-            ...r,
-            marketCap: company.marketCap,
-            pe: company.pe,
-            avgVolume: quote.avgVolume,
-            rsi: last(b.rsi14),
-            macdBull: last(b.macd.macd) > last(b.macd.signal),
-            maAligned: last(b.sma50) > last(b.sma150) && last(b.sma150) > last(b.sma200),
-            relVol: relativeVolume(daily),
-          });
-        }
-        if (!dead) setRows(enriched);
-      } catch (e) {
-        if (!dead) setError(e instanceof Error ? e.message : "Scan failed");
-      }
-    })();
+    scanUniverse()
+      .then((s) => { if (!dead) { setRows(s.results); setUniverseSize(s.universeSize); } })
+      .catch((e) => !dead && setError(e instanceof Error ? e.message : "Scan failed"));
     return () => { dead = true; };
   }, []);
 
@@ -119,6 +87,9 @@ export default function Screener() {
     return out;
   }, [rows, filters, sort]);
 
+  // Reset pagination when filters/sort change.
+  useEffect(() => setLimit(PAGE), [filters, sort]);
+
   const th = (key: SortKey, label: string, tip?: string) => (
     <th className="sortable" onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}>
       {label}{tip && <> <Tooltip text={tip} /></>}{sort.key === key ? (sort.dir === -1 ? " ↓" : " ↑") : ""}
@@ -135,6 +106,8 @@ export default function Screener() {
 
   if (error) return <EmptyState title="Scan failed" hint={error} />;
 
+  const visible = filtered?.slice(0, limit);
+
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="row between wrap">
@@ -142,8 +115,8 @@ export default function Screener() {
           <h1>Screener</h1>
           <div className="muted small">
             {settings.beginnerMode
-              ? "Filter the S&P 500 and Russell 2000 by fundamentals and technicals. Hover any ? bubble to learn what a filter means."
-              : "S&P 500 + Russell 2000 universe with fundamental and technical filters."}
+              ? `Filter ${universeSize ? universeSize.toLocaleString() : "the"} S&P 500 and Russell 2000 stocks by fundamentals and technicals. Hover any ? bubble to learn what a filter means.`
+              : `Full S&P 500 + Russell 2000 universe (${universeSize.toLocaleString()} stocks) with fundamental and technical filters.`}
           </div>
         </div>
         <div className="row">
@@ -225,71 +198,81 @@ export default function Screener() {
         </div>
       )}
 
-      <div className="card pad-0">
-        <div className="row between" style={{ padding: "12px 16px 0" }}>
-          <span className="muted small">{filtered ? `${filtered.length} match${filtered.length === 1 ? "" : "es"}` : "Scanning universe…"}</span>
+      {!rows && <ScanProgress label="Scanning the full market" />}
+
+      {rows && (
+        <div className="card pad-0">
+          <div className="row between" style={{ padding: "12px 16px 0" }}>
+            <span className="muted small">
+              {filtered ? `${filtered.length.toLocaleString()} match${filtered.length === 1 ? "" : "es"} of ${universeSize.toLocaleString()} scanned` : ""}
+            </span>
+          </div>
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th></th>
+                  {th("symbol", "Symbol")}
+                  {th("price", "Price")}
+                  {th("changePct", "Today")}
+                  {th("score", "Score", "Transparent bullish setup score — the sum of points from each met condition. Click the row for the full checklist.")}
+                  {th("marketCap", "Mkt cap")}
+                  {th("pe", "P/E")}
+                  {th("rsi", "RSI")}
+                  {th("relVol", "RVOL", "Relative volume vs 20-day average")}
+                  <th>Pattern</th>
+                  <th>Trend (60d)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered && filtered.length === 0 && (
+                  <tr><td colSpan={11}><EmptyState title="No stocks match these filters" hint="Try loosening a filter or two — strict combinations often produce zero matches." /></td></tr>
+                )}
+                {visible?.map((r) => {
+                  const band = scoreBand(r.score, r.maxScore);
+                  const watched = isWatched(r.symbol);
+                  return (
+                    <tr key={r.symbol} onClick={() => nav(`/stock/${r.symbol}`)}>
+                      <td onClick={(e) => { e.stopPropagation(); if (watchlists[0]) toggleSymbol(watchlists[0].id, r.symbol); }}>
+                        <IconStar className="icon" filled={watched} style={{ width: 16, height: 16, color: watched ? "var(--warn)" : "var(--text-faint)" }} />
+                      </td>
+                      <td><span className="ticker-link">{r.symbol}</span><div className="faint">{r.name}</div></td>
+                      <td className="mono">{fmtPrice(r.price)}</td>
+                      <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
+                      <td>
+                        <div className="row" style={{ gap: 8 }}>
+                          <ScoreBar score={r.score} max={r.maxScore} />
+                          <span className="mono small" title={band.label}>{r.score}</span>
+                        </div>
+                      </td>
+                      <td className="mono">{fmtBig(r.marketCap)}</td>
+                      <td className="mono">{r.pe == null ? "—" : r.pe.toFixed(1)}</td>
+                      <td className="mono">{isNaN(r.rsi) ? "—" : r.rsi.toFixed(0)}</td>
+                      <td className={classNames("mono", r.relVol >= 1.5 ? "up" : undefined)}>{r.relVol.toFixed(1)}×</td>
+                      <td>
+                        {r.patterns[0] ? (
+                          <span className="row" style={{ gap: 6 }}>
+                            <span className="badge accent">{r.patterns[0].label}</span>
+                            <ConfidenceBadge confidence={r.patterns[0].confidence} />
+                          </span>
+                        ) : <span className="faint">—</span>}
+                      </td>
+                      <td><MiniCandles candles={r.candles60.slice(-40)} width={100} height={34} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {filtered && filtered.length > limit && (
+            <div style={{ padding: 14, textAlign: "center" }}>
+              <button className="btn" onClick={() => setLimit((l) => l + PAGE)}>
+                Show {Math.min(PAGE, filtered.length - limit)} more ({(filtered.length - limit).toLocaleString()} remaining)
+              </button>
+            </div>
+          )}
         </div>
-        <div className="table-wrap">
-          <table className="data">
-            <thead>
-              <tr>
-                <th></th>
-                {th("symbol", "Symbol")}
-                {th("price", "Price")}
-                {th("changePct", "Today")}
-                {th("score", "Score", "Transparent bullish setup score — the sum of points from each met condition. Click the row for the full checklist.")}
-                {th("marketCap", "Mkt cap")}
-                {th("pe", "P/E")}
-                {th("rsi", "RSI")}
-                {th("relVol", "RVOL", "Relative volume vs 20-day average")}
-                <th>Pattern</th>
-                <th>Trend (60d)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!filtered && Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i}><td colSpan={11}><Skeleton /></td></tr>
-              ))}
-              {filtered && filtered.length === 0 && (
-                <tr><td colSpan={11}><EmptyState title="No stocks match these filters" hint="Try loosening a filter or two — small universes plus strict filters often produce zero matches." /></td></tr>
-              )}
-              {filtered?.map((r) => {
-                const band = scoreBand(r.score, r.maxScore);
-                const watched = isWatched(r.symbol);
-                return (
-                  <tr key={r.symbol} onClick={() => nav(`/stock/${r.symbol}`)}>
-                    <td onClick={(e) => { e.stopPropagation(); if (watchlists[0]) toggleSymbol(watchlists[0].id, r.symbol); }}>
-                      <IconStar className="icon" filled={watched} style={{ width: 16, height: 16, color: watched ? "var(--warn)" : "var(--text-faint)" }} />
-                    </td>
-                    <td><span className="ticker-link">{r.symbol}</span><div className="faint">{r.name}</div></td>
-                    <td className="mono">{fmtPrice(r.price)}</td>
-                    <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
-                    <td>
-                      <div className="row" style={{ gap: 8 }}>
-                        <ScoreBar score={r.score} max={r.maxScore} />
-                        <span className="mono small" title={band.label}>{r.score}</span>
-                      </div>
-                    </td>
-                    <td className="mono">{fmtBig(r.marketCap)}</td>
-                    <td className="mono">{r.pe == null ? "—" : r.pe.toFixed(1)}</td>
-                    <td className="mono">{isNaN(r.rsi) ? "—" : r.rsi.toFixed(0)}</td>
-                    <td className={classNames("mono", r.relVol >= 1.5 ? "up" : undefined)}>{r.relVol.toFixed(1)}×</td>
-                    <td>
-                      {r.patterns[0] ? (
-                        <span className="row" style={{ gap: 6 }}>
-                          <span className="badge accent">{r.patterns[0].label}</span>
-                          <ConfidenceBadge confidence={r.patterns[0].confidence} />
-                        </span>
-                      ) : <span className="faint">—</span>}
-                    </td>
-                    <td><MiniCandles candles={r.candles60.slice(-40)} width={100} height={34} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

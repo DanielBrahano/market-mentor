@@ -1,4 +1,4 @@
-import type { Candle, ConditionResult, ScanResult } from "../types";
+import type { BreadthSummary, Candle, ConditionResult, ScanResult, ScanSnapshot } from "../types";
 import { computeBundle, priorHigh, relativeVolume, slopePctPerDay, type IndicatorBundle } from "../indicators/core";
 import { detectChartPatterns } from "../patterns/chartPatterns";
 import { provider } from "../data/provider";
@@ -161,8 +161,8 @@ export const MAX_SCORE = SCAN_CONDITIONS.reduce((a, c) => a + c.weight, 0);
 /** Pattern bonus: up to this many extra points for high-confidence bullish patterns. */
 export const PATTERN_BONUS_MAX = 8;
 
-export function evaluateSymbol(symbol: string, candles: Candle[]): Omit<ScanResult, "name" | "sector" | "universe" | "price" | "changePct"> {
-  const b = computeBundle(candles);
+export function evaluateSymbol(symbol: string, candles: Candle[], bundle?: IndicatorBundle) {
+  const b = bundle ?? computeBundle(candles);
   const conditions: ConditionResult[] = SCAN_CONDITIONS.map((c) => {
     const { met, detail } = c.test(candles, b);
     return { id: c.id, label: c.label, met, weight: c.weight, detail };
@@ -191,30 +191,125 @@ export function evaluateSymbol(symbol: string, candles: Candle[]): Omit<ScanResu
   };
 }
 
-let scanCache: { at: number; results: ScanResult[] } | null = null;
+// ---------------------------------------------------------------------------
+// Full-market scan: single pass over the whole universe (~2,400 symbols),
+// computing setup score, patterns, enrichment fields and market breadth from
+// the same candle read. Chunked so the UI stays responsive, with progress
+// events pages can subscribe to. Snapshot cached for 10 minutes — this is the
+// stand-in for a server-side background scanning job.
+// ---------------------------------------------------------------------------
 
-/** Scan the whole universe. Cached for 2 minutes (background-job stand-in). */
-export async function scanUniverse(force = false): Promise<ScanResult[]> {
-  if (!force && scanCache && Date.now() - scanCache.at < 120_000) return scanCache.results;
+let snapshot: ScanSnapshot | null = null;
+let inflight: Promise<ScanSnapshot> | null = null;
+
+type ProgressCb = (done: number, total: number) => void;
+const progressListeners = new Set<ProgressCb>();
+
+export function onScanProgress(cb: ProgressCb): () => void {
+  progressListeners.add(cb);
+  return () => progressListeners.delete(cb);
+}
+
+function notifyProgress(done: number, total: number) {
+  progressListeners.forEach((cb) => cb(done, total));
+}
+
+/**
+ * Yield to the event loop without setTimeout: browsers throttle timers in
+ * background tabs (up to 1s), which would stretch a full scan into minutes.
+ * MessageChannel callbacks are not throttled.
+ */
+function yieldToUI(): Promise<void> {
+  return new Promise((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => resolve();
+    ch.port2.postMessage(null);
+  });
+}
+
+async function runScan(): Promise<ScanSnapshot> {
   const p = provider();
   const entries = p.getUniverse();
+  const total = entries.length;
   const results: ScanResult[] = [];
-  for (const e of entries) {
-    const candles = await p.getDailyHistory(e.symbol);
-    const quote = await p.getQuote(e.symbol);
-    const ev = evaluateSymbol(e.symbol, candles);
-    results.push({
-      ...ev,
-      name: e.name,
-      sector: e.sector,
-      universe: e.universe,
-      price: quote.price,
-      changePct: quote.changePct,
-    });
+  let adv = 0, dec = 0, unch = 0, above50 = 0, above200 = 0, newHi = 0, newLo = 0;
+
+  // Process in groups: histories fetched concurrently (matters for the live
+  // provider where each history is a network call), quotes batched per group.
+  const GROUP = 10;
+  let done = 0;
+  for (let g = 0; g < total; g += GROUP) {
+    const group = entries.slice(g, g + GROUP);
+    const [histories, quotes] = await Promise.all([
+      Promise.allSettled(group.map((e) => p.getDailyHistory(e.symbol))),
+      p.getQuotes(group.map((e) => e.symbol)).catch(() => []),
+    ]);
+    const quoteBy = new Map(quotes.map((q) => [q.symbol, q]));
+
+    for (let k = 0; k < group.length; k++) {
+      const e = group[k];
+      done++;
+      const h = histories[k];
+      if (h.status !== "fulfilled" || h.value.length < 60) continue; // skip unfetchable symbols
+      const candles = h.value;
+      const quote = quoteBy.get(e.symbol);
+      const company = await p.getCompany(e.symbol).catch(() => null);
+      const b = computeBundle(candles);
+      const ev = evaluateSymbol(e.symbol, candles, b);
+
+      // Breadth accumulation (same read, no second pass)
+      const lastC = candles[candles.length - 1], prevC = candles[candles.length - 2];
+      const chg = lastC.c - prevC.c;
+      if (chg > 0.01) adv++; else if (chg < -0.01) dec++; else unch++;
+      if (lastC.c > last(b.sma50)) above50++;
+      if (lastC.c > last(b.sma200)) above200++;
+      const yr = candles.slice(-252);
+      let hi52 = -Infinity, lo52 = Infinity;
+      for (const c of yr) { if (c.h > hi52) hi52 = c.h; if (c.l < lo52) lo52 = c.l; }
+      if (lastC.c >= hi52 * 0.995) newHi++;
+      if (lastC.c <= lo52 * 1.005) newLo++;
+
+      results.push({
+        ...ev,
+        name: e.name,
+        sector: e.sector,
+        universe: e.universe,
+        price: quote?.price ?? lastC.c,
+        changePct: quote?.changePct ?? ((lastC.c - prevC.c) / prevC.c) * 100,
+        marketCap: company?.marketCap ?? 0,
+        pe: company?.pe ?? null,
+        avgVolume: quote?.avgVolume ?? lastC.v,
+        rsi: last(b.rsi14),
+        macdBull: last(b.macd.macd) > last(b.macd.signal),
+        maAligned: last(b.sma50) > last(b.sma150) && last(b.sma150) > last(b.sma200),
+        relVol: b.relVol,
+      });
+    }
+
+    notifyProgress(done, total);
+    // Yield so the UI can paint between groups (throttle-safe).
+    await yieldToUI();
   }
+
   results.sort((a, b) => b.score - a.score);
-  scanCache = { at: Date.now(), results };
-  return results;
+  const totalTicks = adv + dec + unch || 1;
+  const breadth: BreadthSummary = {
+    advancers: adv, decliners: dec, unchanged: unch,
+    pctAbove50ma: (above50 / totalTicks) * 100,
+    pctAbove200ma: (above200 / totalTicks) * 100,
+    newHighs: newHi, newLows: newLo,
+  };
+  return { at: Date.now(), results, breadth, universeSize: total };
+}
+
+/** Full-market scan snapshot (results + breadth). Deduped and cached 10 min. */
+export async function scanUniverse(force = false): Promise<ScanSnapshot> {
+  if (!force && snapshot && Date.now() - snapshot.at < 600_000) return snapshot;
+  if (inflight) return inflight;
+  inflight = runScan()
+    .then((s) => { snapshot = s; return s; })
+    .finally(() => { inflight = null; });
+  return inflight;
 }
 
 /** Human label for a score band, used with the confidence badge. */
