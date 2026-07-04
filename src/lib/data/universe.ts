@@ -1,5 +1,6 @@
 import type { UniverseId } from "../types";
 import { hashStr, mulberry32 } from "../utils";
+import { SP500_EXTRA } from "./sp500";
 
 /**
  * Scan universe metadata. In production this list would be fetched from the
@@ -242,12 +243,47 @@ function genSynthetic(count: number, universeId: UniverseId, usedSymbols: Set<st
   return out;
 }
 
+/** Default industry label per sector for the compact S&P 500 list. */
+const SECTOR_DEFAULT_INDUSTRY: Record<string, string> = {
+  "Technology": "Technology Hardware & Software",
+  "Healthcare": "Healthcare Products & Services",
+  "Financial Services": "Financial Services",
+  "Consumer Cyclical": "Consumer Discretionary",
+  "Consumer Defensive": "Consumer Staples",
+  "Industrials": "Industrial Products & Services",
+  "Energy": "Oil, Gas & Energy Services",
+  "Basic Materials": "Chemicals & Materials",
+  "Real Estate": "Real Estate & REITs",
+  "Utilities": "Electric & Gas Utilities",
+  "Communication Services": "Media & Communications",
+};
+
 const used = new Set(CURATED.map((c) => c.symbol));
-const spCurated = CURATED.filter((c) => c.universe === "sp500").length;
+
+/** Real S&P 500 members from the compact list (skipping curated duplicates). */
+const SP500_REAL: UniverseEntry[] = SP500_EXTRA
+  .filter(([symbol]) => !used.has(symbol) && (used.add(symbol), true))
+  .map(([symbol, name, sector, basePrice, capB]) => {
+    const rng = mulberry32(hashStr(symbol + ":entry"));
+    return {
+      symbol,
+      name,
+      sector,
+      industry: SECTOR_DEFAULT_INDUSTRY[sector] ?? sector,
+      universe: "sp500" as const,
+      basePrice,
+      baseCap: capB * 1e9,
+      drift: Math.round((-0.35 + rng() * 0.9) * 100) / 100,
+      summary: `${name} is an S&P 500 member in the ${(SECTOR_DEFAULT_INDUSTRY[sector] ?? sector).toLowerCase()} space.`,
+    };
+  });
+
+const spCurated = CURATED.filter((c) => c.universe === "sp500").length + SP500_REAL.length;
 const rtCurated = CURATED.filter((c) => c.universe === "russell2000").length;
 
 export const UNIVERSE: UniverseEntry[] = [
   ...CURATED,
+  ...SP500_REAL,
   ...genSynthetic(Math.max(0, S_AND_P_TARGET - spCurated), "sp500", used),
   ...genSynthetic(Math.max(0, RUSSELL_TARGET - rtCurated), "russell2000", used),
 ];

@@ -10,7 +10,7 @@ A stock analysis, scanning and learning platform for beginners — inspired by Y
 
 | Mode | What you get |
 |---|---|
-| **Live** (default) | Real prices and charts for ~107 well-known companies, **including pre/post-market** state and prices, near real-time, via the Market Mentor data relay (Cloudflare Worker proxying Yahoo Finance's public chart API). Real index levels (S&P 500, Nasdaq, Russell 2000, Dow). Fundamentals are approximations and labeled as such. |
+| **Live** (default) | Real prices and charts for the **full S&P 500 (~500 real companies)** plus curated small caps, **including pre/post-market** state and prices, near real-time, via the Market Mentor data relay (Cloudflare Worker proxying Yahoo Finance's public chart API). Real index levels (S&P 500, Nasdaq, Russell 2000, Dow). Fundamentals are approximations and labeled as such. |
 | **Simulated** | The full ~2,400-stock S&P 500 + Russell 2000 universe with realistic, deterministic generated data — useful for exploring the scanner at full-market breadth. |
 
 Switch in **Settings → Market data**. If the relay is unreachable, the app falls back to simulated data for the session and says so.
