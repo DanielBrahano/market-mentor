@@ -283,6 +283,9 @@ async function runScan(): Promise<ScanSnapshot> {
         macdBull: last(b.macd.macd) > last(b.macd.signal),
         maAligned: last(b.sma50) > last(b.sma150) && last(b.sma150) > last(b.sma200),
         relVol: b.relVol,
+        marketState: quote?.marketState,
+        extendedPrice: quote?.extendedPrice,
+        extendedChangePct: quote?.extendedChangePct,
       });
     }
 

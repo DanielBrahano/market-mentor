@@ -6,6 +6,32 @@ A stock analysis, scanning and learning platform for beginners — inspired by Y
 
 **Educational and analytical software. Not financial advice.** All signals are probabilistic observations about historical price behavior.
 
+## What is Market Mentor?
+
+Market Mentor shows **real market prices** (near real-time, including pre-market and after-hours), scans ~500 S&P 500 stocks for possible bullish setups, and explains everything in plain English so you don't need to be a trader to understand what you're looking at. Its whole personality: **no black boxes** — every score, signal and pattern comes with the exact reasons behind it, and every technical term has a hover-? explainer.
+
+### The pages, in plain English
+
+| Page | What it's for |
+|---|---|
+| **Dashboard** | The morning glance: real index levels (click any index card for a plain-English explainer of what it tracks and how to read it), market session state (pre-market / open / after hours / closed), market breadth, today's top scanner hits, detected patterns, top gainers & losers, recent alerts |
+| **Screener** | The research table: filter every scanned stock by sector, size, P/E, price, volume, RSI, MACD, trend alignment or setup score — then sort, paginate and save your screens |
+| **Stock page** (click any ticker) | Professional chart with indicators, a "what the chart is saying" plain-English readout, risk notes, the transparent setup-score checklist, pattern annotations, and pre/post-market prices |
+| **Pattern Explorer** | "Top stocks by pattern" — which companies show a Double Bottom, Bull Flag, Cup & Handle etc. *right now*, ranked by detection confidence — plus guides teaching every pattern |
+| **Learn** | Indicator deep-dives and a beginner-friendly glossary |
+| **Watchlists** | Your personal lists with live-updating quotes (incl. extended-hours prices), saved in your browser |
+| **Alerts** | Rules like "tell me when a watchlist stock crosses its 200-day average" — every alert explains what happened and why it might matter |
+
+### How to use it (the 3-step habit)
+
+1. **Start on the Dashboard** — is the market broadly healthy today? Check the session chip, breadth and the index cards.
+2. **Find candidates** — via top scanner hits, the Screener, or Pattern Explorer's leaderboards.
+3. **Click into the stock** — read the plain-English chart interpretation and risk notes, open the score checklist to see *exactly why* it scored what it did, and add it to a watchlist if it's worth tracking. Then do your own research before any real-money decision.
+
+### On your phone
+
+Open the site in your phone's browser and use **Add to Home Screen** (Share menu on iOS, ⋮ menu on Android) — it installs as an app with the same live data.
+
 ## Data modes
 
 | Mode | What you get |

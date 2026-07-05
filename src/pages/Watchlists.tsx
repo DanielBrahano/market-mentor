@@ -5,7 +5,7 @@ import { provider } from "../lib/data/provider";
 import { findEntry } from "../lib/data/universe";
 import { classNames, fmtPct, fmtPrice, fmtVolume } from "../lib/utils";
 import { useStore } from "../state/store";
-import { EmptyState, Skeleton, Tooltip } from "../components/ui";
+import { EmptyState, ExtHours, Skeleton, Tooltip } from "../components/ui";
 import { IconPlus, IconX } from "../components/icons";
 import { Sparkline } from "../components/charts/Sparkline";
 
@@ -125,12 +125,7 @@ export default function Watchlists() {
                         <td><span className="ticker-link">{sym}</span><div className="faint">{entry?.name}</div></td>
                         <td className="mono">
                           {q ? fmtPrice(q.price) : <Skeleton w={50} />}
-                          {q?.extendedPrice != null && (q.marketState === "PRE" || q.marketState === "POST") && (
-                            <div className="faint" style={{ whiteSpace: "nowrap" }}>
-                              {q.marketState === "PRE" ? "Pre" : "AH"}: {fmtPrice(q.extendedPrice)}{" "}
-                              <span className={(q.extendedChangePct ?? 0) >= 0 ? "up" : "down"}>{fmtPct(q.extendedChangePct ?? 0)}</span>
-                            </div>
-                          )}
+                          {q && <div><ExtHours state={q.marketState} price={q.extendedPrice} changePct={q.extendedChangePct} showPrice /></div>}
                         </td>
                         <td className={classNames("mono", q && q.changePct >= 0 ? "up" : "down")}>{q ? fmtPct(q.changePct) : "…"}</td>
                         <td className="mono faint">{q ? `${fmtPrice(q.dayLow)} – ${fmtPrice(q.dayHigh)}` : "…"}</td>

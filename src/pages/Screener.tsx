@@ -5,7 +5,7 @@ import { scanUniverse, scoreBand } from "../lib/scanner/engine";
 import { SECTORS } from "../lib/data/universe";
 import { classNames, fmtBig, fmtPct, fmtPrice } from "../lib/utils";
 import { useStore } from "../state/store";
-import { ConfidenceBadge, EmptyState, ScoreBar, Tooltip, Seg } from "../components/ui";
+import { ConfidenceBadge, EmptyState, ExtHours, ScoreBar, Tooltip, Seg } from "../components/ui";
 import { ScanProgress } from "../components/ScanProgress";
 import { MiniCandles } from "../components/charts/Sparkline";
 import { IconStar } from "../components/icons";
@@ -237,7 +237,10 @@ export default function Screener() {
                         <IconStar className="icon" filled={watched} style={{ width: 16, height: 16, color: watched ? "var(--warn)" : "var(--text-faint)" }} />
                       </td>
                       <td><span className="ticker-link">{r.symbol}</span><div className="faint">{r.name}</div></td>
-                      <td className="mono">{fmtPrice(r.price)}</td>
+                      <td className="mono">
+                        {fmtPrice(r.price)}
+                        <div><ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></div>
+                      </td>
                       <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
                       <td>
                         <div className="row" style={{ gap: 8 }}>

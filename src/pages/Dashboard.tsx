@@ -6,14 +6,39 @@ import { scanUniverse, scoreBand } from "../lib/scanner/engine";
 import { fmtPct, fmtPrice, fmtTimeAgo, classNames } from "../lib/utils";
 import { useStore } from "../state/store";
 import { Sparkline, MiniCandles } from "../components/charts/Sparkline";
-import { ConfidenceBadge, EmptyState, ScoreBar, Skeleton, SkeletonCard, Tooltip } from "../components/ui";
+import { ConfidenceBadge, Drawer, EmptyState, ExtHours, ScoreBar, Skeleton, SkeletonCard, Tooltip } from "../components/ui";
 import { ScanProgress } from "../components/ScanProgress";
-import { IconBell, IconTrendUp } from "../components/icons";
+import { IconBell, IconInfo, IconTrendUp } from "../components/icons";
+
+/** Plain-English explainers for each index, shown in the info drawer. */
+const INDEX_INFO: Record<string, { tracks: string; weighting: string; readIt: string }> = {
+  spx: {
+    tracks: "The 500 largest publicly traded U.S. companies — about 80% of the entire U.S. stock market's value. When people say \"the market\" or \"stocks\", this is usually what they mean.",
+    weighting: "Weighted by company size, so the biggest names (Apple, Microsoft, Nvidia) move it far more than smaller members.",
+    readIt: "The broadest single gauge of how U.S. large-caps are doing. A green day here means large-cap America broadly rose.",
+  },
+  ndx: {
+    tracks: "The Nasdaq Composite — every company listed on the Nasdaq exchange (roughly 3,000), which skews heavily toward technology and growth companies.",
+    weighting: "Size-weighted and very tech-heavy, so it swings more than the S&P 500 and is treated as the pulse of tech.",
+    readIt: "When tech and growth stocks are hot, this outpaces the S&P 500; when they sell off, it falls harder.",
+  },
+  rut: {
+    tracks: "The Russell 2000 — about 2,000 small U.S. companies. It's the standard gauge for smaller, more domestic businesses.",
+    weighting: "Size-weighted within the small-cap slice of the market.",
+    readIt: "Small caps are more sensitive to the economy and interest rates. Strength here often signals broad risk appetite, not just a few giants carrying the market.",
+  },
+  dji: {
+    tracks: "The Dow Jones Industrial Average — just 30 large, well-established \"blue-chip\" American companies. The oldest and most famous index.",
+    weighting: "Unusually, it's price-weighted: a higher share price gives a stock more sway, regardless of company size. That's a historical quirk, not a better method.",
+    readIt: "A quick read on how a handful of iconic large companies did. Narrower than the S&P 500, so treat it as a headline, not the whole story.",
+  },
+};
 
 export default function Dashboard() {
   const [indexes, setIndexes] = useState<IndexSummary[] | null>(null);
   const [snap, setSnap] = useState<ScanSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openIndex, setOpenIndex] = useState<IndexSummary | null>(null);
   const { alerts, settings } = useStore();
   const nav = useNavigate();
 
@@ -74,13 +99,22 @@ export default function Dashboard() {
         <Link to="/screener" className="btn primary">Open Screener</Link>
       </div>
 
-      {/* Index cards */}
+      {/* Index cards — click for a plain-English explainer */}
       <div className="grid cols-4">
         {indexes
           ? indexes.map((ix) => (
-              <div className="card" key={ix.id}>
+              <div
+                className="card index-card"
+                key={ix.id}
+                onClick={() => setOpenIndex(ix)}
+                style={{ cursor: "pointer" }}
+                title={`What is the ${ix.name}?`}
+              >
                 <div className="row between">
-                  <span className="muted small" style={{ fontWeight: 650 }}>{ix.name}</span>
+                  <span className="muted small" style={{ fontWeight: 650, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    {ix.name}
+                    <IconInfo className="icon" style={{ width: 13, height: 13, color: "var(--text-faint)" }} />
+                  </span>
                   <span className={classNames("badge", ix.changePct >= 0 ? "up" : "down", "mono")}>{fmtPct(ix.changePct)}</span>
                 </div>
                 <div className="row between" style={{ marginTop: 6 }}>
@@ -91,6 +125,42 @@ export default function Dashboard() {
             ))
           : Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} lines={2} />)}
       </div>
+
+      {openIndex && (
+        <Drawer title={openIndex.name} onClose={() => setOpenIndex(null)}>
+          <div className="stack" style={{ gap: 14 }}>
+            <div className="card" style={{ margin: 0 }}>
+              <div className="row between">
+                <span style={{ fontSize: 26, fontWeight: 750 }} className="mono">{fmtPrice(openIndex.value)}</span>
+                <span className={classNames("badge", openIndex.changePct >= 0 ? "up" : "down", "mono")}>
+                  {openIndex.change >= 0 ? "+" : ""}{fmtPrice(openIndex.change)} ({fmtPct(openIndex.changePct)})
+                </span>
+              </div>
+              <div className="row" style={{ marginTop: 8 }}><Sparkline values={openIndex.spark} width={260} height={54} /></div>
+              <div className="faint" style={{ marginTop: 6 }}>Last month of daily closes · change shown vs the previous session.</div>
+            </div>
+            {INDEX_INFO[openIndex.id] && (
+              <>
+                <div>
+                  <h3 style={{ marginBottom: 6 }}>What it tracks</h3>
+                  <p className="small muted" style={{ margin: 0 }}>{INDEX_INFO[openIndex.id].tracks}</p>
+                </div>
+                <div>
+                  <h3 style={{ marginBottom: 6 }}>How it's built</h3>
+                  <p className="small muted" style={{ margin: 0 }}>{INDEX_INFO[openIndex.id].weighting}</p>
+                </div>
+                <div>
+                  <h3 style={{ marginBottom: 6 }}>How to read today's move</h3>
+                  <p className="small muted" style={{ margin: 0 }}>{INDEX_INFO[openIndex.id].readIt}</p>
+                </div>
+              </>
+            )}
+            <div className="card" style={{ margin: 0, background: "var(--warn-soft)", borderColor: "var(--warn)" }}>
+              <span className="small">An index is an average, not something you buy directly. It tells you the market's mood — individual stocks can move very differently on the same day.</span>
+            </div>
+          </div>
+        </Drawer>
+      )}
 
       {!snap && <ScanProgress />}
 
@@ -113,7 +183,10 @@ export default function Dashboard() {
                     return (
                       <tr key={r.symbol} onClick={() => nav(`/stock/${r.symbol}`)}>
                         <td><span className="ticker-link">{r.symbol}</span><div className="faint">{r.name}</div></td>
-                        <td className="mono">{fmtPrice(r.price)}</td>
+                        <td className="mono">
+                          {fmtPrice(r.price)}
+                          <div><ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></div>
+                        </td>
                         <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
                         <td>
                           <div className="row" style={{ gap: 8 }}>
@@ -224,7 +297,7 @@ export default function Dashboard() {
                   <div className="faint" style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Top gainers</div>
                   {gainers.map((r) => (
                     <div key={r.symbol} className="row between small" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
-                      <b>{r.symbol}</b>
+                      <span><b>{r.symbol}</b> <ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></span>
                       <span className="mono up">{fmtPct(r.changePct)}</span>
                     </div>
                   ))}
@@ -233,7 +306,7 @@ export default function Dashboard() {
                   <div className="faint" style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Top losers</div>
                   {losers.map((r) => (
                     <div key={r.symbol} className="row between small" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
-                      <b>{r.symbol}</b>
+                      <span><b>{r.symbol}</b> <ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></span>
                       <span className="mono down">{fmtPct(r.changePct)}</span>
                     </div>
                   ))}

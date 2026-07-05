@@ -104,6 +104,10 @@ export interface ScanResult {
   macdBull: boolean;
   maAligned: boolean;
   relVol: number;
+  // Extended-hours snapshot from the quote (live data mode):
+  marketState?: MarketState;
+  extendedPrice?: number;
+  extendedChangePct?: number;
 }
 
 export interface ScanSnapshot {

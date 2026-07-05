@@ -1,9 +1,35 @@
 import React, { useEffect } from "react";
-import { classNames } from "../lib/utils";
+import { classNames, fmtPct, fmtPrice } from "../lib/utils";
+import type { MarketState } from "../lib/types";
 import { FRESHNESS_HELP, FRESHNESS_LABEL, provider } from "../lib/data/provider";
 import { IconInfo, IconX } from "./icons";
 
 /** Small reusable UI primitives. */
+
+/**
+ * Extended-hours (pre-market / after-hours) price + change.
+ * Renders nothing unless the market is in a PRE or POST session and the
+ * provider supplied an extended price — so it's safe to drop in everywhere.
+ */
+export function ExtHours({
+  state, price, changePct, showPrice = false, style,
+}: {
+  state?: MarketState;
+  price?: number;
+  changePct?: number;
+  showPrice?: boolean;
+  style?: React.CSSProperties;
+}) {
+  if ((state !== "PRE" && state !== "POST") || price == null || changePct == null) return null;
+  const label = state === "PRE" ? "Pre-mkt" : "After hrs";
+  return (
+    <span className="faint" style={{ whiteSpace: "nowrap", display: "inline-flex", gap: 4, alignItems: "baseline", ...style }}>
+      <span>{label}</span>
+      {showPrice && <span className="mono">{fmtPrice(price)}</span>}
+      <span className={classNames("mono", changePct >= 0 ? "up" : "down")}>{fmtPct(changePct)}</span>
+    </span>
+  );
+}
 
 export function Tooltip({ text, children }: { text: string; children?: React.ReactNode }) {
   return (
