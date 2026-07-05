@@ -115,6 +115,8 @@ export interface ScanSnapshot {
   results: ScanResult[];
   breadth: BreadthSummary;
   universeSize: number;
+  /** True when the snapshot covers the full universe incl. all small caps. */
+  deep: boolean;
 }
 
 export type PatternKind =

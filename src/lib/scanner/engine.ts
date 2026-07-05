@@ -227,9 +227,9 @@ function yieldToUI(): Promise<void> {
   });
 }
 
-async function runScan(): Promise<ScanSnapshot> {
+async function runScan(deep: boolean): Promise<ScanSnapshot> {
   const p = provider();
-  const entries = p.getUniverse();
+  const entries = p.getScanUniverse ? p.getScanUniverse(deep) : p.getUniverse();
   const total = entries.length;
   const results: ScanResult[] = [];
   let adv = 0, dec = 0, unch = 0, above50 = 0, above200 = 0, newHi = 0, newLo = 0;
@@ -302,17 +302,30 @@ async function runScan(): Promise<ScanSnapshot> {
     pctAbove200ma: (above200 / totalTicks) * 100,
     newHighs: newHi, newLows: newLo,
   };
-  return { at: Date.now(), results, breadth, universeSize: total };
+  return { at: Date.now(), results, breadth, universeSize: total, deep };
 }
 
-/** Full-market scan snapshot (results + breadth). Deduped and cached 10 min. */
-export async function scanUniverse(force = false): Promise<ScanSnapshot> {
-  if (!force && snapshot && Date.now() - snapshot.at < 600_000) return snapshot;
-  if (inflight) return inflight;
-  inflight = runScan()
+/**
+ * Full-market scan snapshot (results + breadth). Deduped and cached 10 min.
+ * A cached deep snapshot satisfies standard requests (it's a superset); a
+ * standard snapshot does NOT satisfy a deep request.
+ */
+export async function scanUniverse(force = false, deep = false): Promise<ScanSnapshot> {
+  const fresh = snapshot && Date.now() - snapshot.at < 600_000;
+  if (!force && fresh && snapshot && (snapshot.deep || !deep)) return snapshot;
+  if (inflight) {
+    const running = await inflight;
+    if (running.deep || !deep) return running;
+  }
+  inflight = runScan(deep)
     .then((s) => { snapshot = s; return s; })
     .finally(() => { inflight = null; });
   return inflight;
+}
+
+/** The latest snapshot without triggering a scan (may be null). */
+export function currentSnapshot(): ScanSnapshot | null {
+  return snapshot;
 }
 
 /** Human label for a score band, used with the confidence badge. */

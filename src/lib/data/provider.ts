@@ -16,6 +16,12 @@ export interface MarketDataProvider {
   readonly freshness: DataFreshness;
 
   getUniverse(): UniverseEntry[];
+  /**
+   * Which entries the scanner should sweep. Providers with network costs can
+   * return a leaner standard set and the full universe only for deep scans.
+   * Falls back to getUniverse() when absent.
+   */
+  getScanUniverse?(deep: boolean): UniverseEntry[];
   getQuote(symbol: string): Promise<Quote>;
   getQuotes(symbols: string[]): Promise<Quote[]>;
   /** Daily (or intraday for 1D/5D) candles for a timeframe, oldest first. */

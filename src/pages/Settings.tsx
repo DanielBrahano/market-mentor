@@ -56,8 +56,9 @@ export default function Settings() {
           <div style={{ maxWidth: 440 }}>
             <div className="small" style={{ fontWeight: 650 }}>Data source</div>
             <div className="faint">
-              <b>Live</b> shows real prices (incl. pre/post market) for {REAL_UNIVERSE.length} well-known companies via our data relay.{" "}
-              <b>Simulated</b> covers the full {UNIVERSE.length.toLocaleString()}-stock S&P 500 + Russell 2000 universe with realistic generated data.
+              <b>Live</b> shows real prices (incl. pre/post market) for {REAL_UNIVERSE.length.toLocaleString()} real companies — the full S&P 500 plus ~1,900 small caps — via our data relay.
+              The scanner sweeps the S&P 500 by default; use <b>Deep scan</b> on the Screener to sweep the small caps too.{" "}
+              <b>Simulated</b> uses realistic generated data for the same {UNIVERSE.length.toLocaleString()}-stock universe.
             </div>
           </div>
           <Seg

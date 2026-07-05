@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ScanResult } from "../lib/types";
 import { scanUniverse, scoreBand } from "../lib/scanner/engine";
+import { provider } from "../lib/data/provider";
 import { SECTORS } from "../lib/data/universe";
 import { classNames, fmtBig, fmtPct, fmtPrice } from "../lib/utils";
 import { useStore } from "../state/store";
@@ -40,6 +41,8 @@ const PAGE = 100;
 export default function Screener() {
   const [rows, setRows] = useState<ScanResult[] | null>(null);
   const [universeSize, setUniverseSize] = useState(0);
+  const [isDeep, setIsDeep] = useState(false);
+  const [deepRunning, setDeepRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
@@ -52,10 +55,24 @@ export default function Screener() {
   useEffect(() => {
     let dead = false;
     scanUniverse()
-      .then((s) => { if (!dead) { setRows(s.results); setUniverseSize(s.universeSize); } })
+      .then((s) => { if (!dead) { setRows(s.results); setUniverseSize(s.universeSize); setIsDeep(s.deep); } })
       .catch((e) => !dead && setError(e instanceof Error ? e.message : "Scan failed"));
     return () => { dead = true; };
   }, []);
+
+  const runDeepScan = async () => {
+    setDeepRunning(true);
+    try {
+      const s = await scanUniverse(true, true);
+      setRows(s.results); setUniverseSize(s.universeSize); setIsDeep(s.deep);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Deep scan failed");
+    } finally {
+      setDeepRunning(false);
+    }
+  };
+  // The deep-scan offer only matters in live mode (sim always covers everything).
+  const canDeepScan = provider().id === "live" && !isDeep;
 
   const filtered = useMemo(() => {
     if (!rows) return null;
@@ -202,11 +219,22 @@ export default function Screener() {
 
       {rows && (
         <div className="card pad-0">
-          <div className="row between" style={{ padding: "12px 16px 0" }}>
+          <div className="row between wrap" style={{ padding: "12px 16px 0" }}>
             <span className="muted small">
               {filtered ? `${filtered.length.toLocaleString()} match${filtered.length === 1 ? "" : "es"} of ${universeSize.toLocaleString()} scanned` : ""}
+              {isDeep && <span className="badge accent" style={{ marginLeft: 8 }}>deep scan</span>}
             </span>
+            {canDeepScan && !deepRunning && (
+              <button className="btn sm" onClick={runDeepScan} title="Also scan ~1,900 real small caps. Takes a few minutes on first run.">
+                Deep scan: include ~1,900 small caps
+              </button>
+            )}
           </div>
+          {deepRunning && (
+            <div style={{ padding: "10px 16px 0" }}>
+              <ScanProgress label="Deep scan — sweeping all small caps too" />
+            </div>
+          )}
           <div className="table-wrap">
             <table className="data">
               <thead>

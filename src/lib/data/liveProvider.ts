@@ -1,6 +1,6 @@
 import type { Candle, CompanyInfo, IndexSummary, MarketState, Quote, Timeframe } from "../types";
 import { hashStr, mulberry32 } from "../utils";
-import { REAL_UNIVERSE, findEntry } from "./universe";
+import { CORE_SCAN_SYMBOLS, REAL_UNIVERSE, findEntry } from "./universe";
 import type { MarketDataProvider } from "./provider";
 
 /**
@@ -128,6 +128,11 @@ export const liveProvider: MarketDataProvider = {
   freshness: "near-realtime",
 
   getUniverse: () => REAL_UNIVERSE,
+
+  // Standard scan: full S&P 500 + curated favorites (~520 network fetches).
+  // Deep scan: everything incl. ~1,900 real small caps — slower by design.
+  getScanUniverse: (deep: boolean) =>
+    deep ? REAL_UNIVERSE : REAL_UNIVERSE.filter((e) => e.universe === "sp500" || CORE_SCAN_SYMBOLS.has(e.symbol)),
 
   async getQuote(symbol) {
     const [q] = await getQuotesImpl([symbol]);

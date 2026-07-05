@@ -1,6 +1,7 @@
 import type { UniverseId } from "../types";
 import { hashStr, mulberry32 } from "../utils";
 import { SP500_EXTRA } from "./sp500";
+import { RUSSELL_SMALLCAPS } from "./russell2000";
 
 /**
  * Scan universe metadata. In production this list would be fetched from the
@@ -278,15 +279,37 @@ const SP500_REAL: UniverseEntry[] = SP500_EXTRA
     };
   });
 
+/** Real small caps in the Russell 2000 band (generated dataset, dedupe again). */
+const RUSSELL_REAL: UniverseEntry[] = RUSSELL_SMALLCAPS
+  .filter(([symbol]) => !used.has(symbol) && (used.add(symbol), true))
+  .map(([symbol, name, sector, basePrice, capB]) => {
+    const rng = mulberry32(hashStr(symbol + ":entry"));
+    return {
+      symbol,
+      name,
+      sector,
+      industry: SECTOR_DEFAULT_INDUSTRY[sector] ?? sector,
+      universe: "russell2000" as const,
+      basePrice,
+      baseCap: capB * 1e9,
+      drift: Math.round((-0.4 + rng() * 0.95) * 100) / 100,
+      summary: `${name} is a U.S. small-cap company in the ${(SECTOR_DEFAULT_INDUSTRY[sector] ?? sector).toLowerCase()} space.`,
+    };
+  });
+
 const spCurated = CURATED.filter((c) => c.universe === "sp500").length + SP500_REAL.length;
-const rtCurated = CURATED.filter((c) => c.universe === "russell2000").length;
+const rtCurated = CURATED.filter((c) => c.universe === "russell2000").length + RUSSELL_REAL.length;
 
 export const UNIVERSE: UniverseEntry[] = [
   ...CURATED,
   ...SP500_REAL,
+  ...RUSSELL_REAL,
   ...genSynthetic(Math.max(0, S_AND_P_TARGET - spCurated), "sp500", used),
   ...genSynthetic(Math.max(0, RUSSELL_TARGET - rtCurated), "russell2000", used),
 ];
+
+/** Curated favorites — always included in the standard (non-deep) live scan. */
+export const CORE_SCAN_SYMBOLS = new Set(CURATED.map((c) => c.symbol));
 
 export const SECTORS = Array.from(new Set(UNIVERSE.map((u) => u.sector))).sort();
 export const INDUSTRIES = Array.from(new Set(UNIVERSE.map((u) => u.industry))).sort();
