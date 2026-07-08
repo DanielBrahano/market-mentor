@@ -6,6 +6,8 @@ import { provider } from "../lib/data/provider";
 import { SECTORS } from "../lib/data/universe";
 import { classNames, fmtBig, fmtPct, fmtPrice, fmtTimeAgo } from "../lib/utils";
 import { useFreshQuotes } from "../lib/useFreshQuotes";
+import { useIsMobile } from "../lib/useIsMobile";
+import { StockRowCard } from "../components/StockRowCard";
 import { useStore } from "../state/store";
 import { ConfidenceBadge, EmptyState, ExtHours, ScoreBar, Tooltip, Seg } from "../components/ui";
 import { ScanProgress } from "../components/ScanProgress";
@@ -49,8 +51,10 @@ export default function Screener() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const [saveName, setSaveName] = useState("");
-  const [showFilters, setShowFilters] = useState(true);
+  // Phones start with filters tucked away — the results are the point.
+  const [showFilters, setShowFilters] = useState(() => window.innerWidth > 640);
   const [limit, setLimit] = useState(PAGE);
+  const isMobile = useIsMobile();
   const { savedScreens, saveScreen, deleteScreen, isWatched, watchlists, toggleSymbol, settings } = useStore();
   const nav = useNavigate();
 
@@ -75,6 +79,12 @@ export default function Screener() {
   };
   // The deep-scan offer only matters in live mode (sim always covers everything).
   const canDeepScan = provider().id === "live" && !isDeep;
+
+  const activeFilterCount = useMemo(
+    () => (Object.keys(DEFAULT_FILTERS) as (keyof Filters)[])
+      .filter((k) => filters[k] !== DEFAULT_FILTERS[k]).length,
+    [filters]
+  );
 
   const filtered = useMemo(() => {
     if (!rows) return null;
@@ -146,8 +156,11 @@ export default function Screener() {
           </div>
         </div>
         <div className="row">
-          <button className="btn" onClick={() => setShowFilters((s) => !s)}>{showFilters ? "Hide" : "Show"} filters</button>
-          <button className="btn ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>Reset</button>
+          <button className="btn" onClick={() => setShowFilters((s) => !s)}>
+            {showFilters ? "Hide" : "Show"} filters
+            {activeFilterCount > 0 && <span className="badge accent" style={{ marginLeft: 6 }}>{activeFilterCount}</span>}
+          </button>
+          {activeFilterCount > 0 && <button className="btn ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>Reset</button>}
         </div>
       </div>
 
@@ -227,8 +240,8 @@ export default function Screener() {
       {!rows && <ScanProgress label="Scanning the full market" />}
 
       {rows && (
-        <div className="card pad-0">
-          <div className="row between wrap" style={{ padding: "12px 16px 0" }}>
+        <div className={isMobile ? "stack" : "card pad-0"} style={isMobile ? { gap: 10 } : undefined}>
+          <div className="row between wrap" style={{ padding: isMobile ? 0 : "12px 16px 0" }}>
             <span className="muted small">
               {filtered ? `${filtered.length.toLocaleString()} match${filtered.length === 1 ? "" : "es"} of ${universeSize.toLocaleString()} scanned` : ""}
               {snapAt > 0 && <span className="faint"> · scores updated {fmtTimeAgo(snapAt)}, prices live</span>}
@@ -241,10 +254,51 @@ export default function Screener() {
             )}
           </div>
           {deepRunning && (
-            <div style={{ padding: "10px 16px 0" }}>
+            <div style={{ padding: isMobile ? 0 : "10px 16px 0" }}>
               <ScanProgress label="Deep scan — sweeping all small caps too" />
             </div>
           )}
+
+          {isMobile && (
+            <label className="field">
+              Sort by
+              <select
+                className="input"
+                value={`${sort.key}:${sort.dir}`}
+                onChange={(e) => {
+                  const [key, dir] = e.target.value.split(":");
+                  setSort({ key: key as SortKey, dir: Number(dir) as 1 | -1 });
+                }}
+              >
+                <option value="score:-1">Setup score (best first)</option>
+                <option value="changePct:-1">Today's gainers</option>
+                <option value="changePct:1">Today's losers</option>
+                <option value="marketCap:-1">Biggest companies</option>
+                <option value="relVol:-1">Unusual volume</option>
+                <option value="rsi:1">Lowest RSI (oversold)</option>
+                <option value="price:-1">Price (high to low)</option>
+                <option value="symbol:1">Symbol (A–Z)</option>
+              </select>
+            </label>
+          )}
+
+          {isMobile ? (
+            <>
+              {filtered && filtered.length === 0 && (
+                <EmptyState title="No stocks match these filters" hint="Try loosening a filter or two — strict combinations often produce zero matches." />
+              )}
+              {visible?.map((r) => (
+                <StockRowCard
+                  key={r.symbol}
+                  r={r}
+                  quote={fresh.get(r.symbol)}
+                  onOpen={() => nav(`/stock/${r.symbol}`)}
+                  watched={isWatched(r.symbol)}
+                  onToggleWatch={() => { if (watchlists[0]) toggleSymbol(watchlists[0].id, r.symbol); }}
+                />
+              ))}
+            </>
+          ) : (
           <div className="table-wrap">
             <table className="data">
               <thead>
@@ -309,6 +363,7 @@ export default function Screener() {
               </tbody>
             </table>
           </div>
+          )}
           {filtered && filtered.length > limit && (
             <div style={{ padding: 14, textAlign: "center" }}>
               <button className="btn" onClick={() => setLimit((l) => l + PAGE)}>

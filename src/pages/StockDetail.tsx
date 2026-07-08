@@ -160,6 +160,9 @@ export default function StockDetail() {
       {/* Header */}
       <div className="row between wrap" style={{ alignItems: "flex-start" }}>
         <div>
+          <button className="btn ghost sm" style={{ marginBottom: 6, marginLeft: -8 }} onClick={() => (window.history.length > 1 ? window.history.back() : (window.location.href = "/"))}>
+            ← Back
+          </button>
           <div className="row wrap" style={{ gap: 8 }}>
             <h1>{company.name} <span className="muted" style={{ fontWeight: 500 }}>({sym})</span></h1>
             <span className="badge neutral">{company.sector}</span>

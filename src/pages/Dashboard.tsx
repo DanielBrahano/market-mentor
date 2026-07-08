@@ -10,6 +10,8 @@ import { ConfidenceBadge, Drawer, EmptyState, ExtHours, ScoreBar, Skeleton, Skel
 import { ScanProgress } from "../components/ScanProgress";
 import { IconBell, IconInfo, IconTrendUp } from "../components/icons";
 import { useFreshQuotes } from "../lib/useFreshQuotes";
+import { useIsMobile } from "../lib/useIsMobile";
+import { StockRowCard } from "../components/StockRowCard";
 
 /** Plain-English explainers for each index, shown in the info drawer. */
 const INDEX_INFO: Record<string, { tracks: string; weighting: string; readIt: string }> = {
@@ -44,6 +46,7 @@ export default function Dashboard() {
   const [welcomed, setWelcomed] = useState(() => localStorage.getItem("mm:welcomed") === "1");
   const { alerts, settings } = useStore();
   const nav = useNavigate();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     let dead = false;
@@ -162,7 +165,7 @@ export default function Dashboard() {
         {indexes
           ? indexes.map((ix) => (
               <div
-                className="card index-card"
+                className={classNames("card index-card", ix.changePct > 0.001 ? "gain" : ix.changePct < -0.001 ? "lose" : undefined)}
                 key={ix.id}
                 onClick={() => setOpenIndex(ix)}
                 style={{ cursor: "pointer" }}
@@ -225,6 +228,21 @@ export default function Dashboard() {
       <div className="grid main-split">
         <div className="stack" style={{ gap: 16 }}>
           {/* Top scanner hits */}
+          {isMobile ? (
+            <div>
+              <div className="card-title">
+                <h2>Top scanner hits</h2>
+                <Tooltip text="Every scanned stock is checked against 11 transparent bullish conditions. The score is the sum of points for each condition that's true — tap a stock for the full checklist." />
+              </div>
+              <div className="stack" style={{ gap: 10 }}>
+                {topHits
+                  ? topHits.map((r) => (
+                      <StockRowCard key={r.symbol} r={r} quote={fresh.get(r.symbol)} onOpen={() => nav(`/stock/${r.symbol}`)} showSummary />
+                    ))
+                  : <><SkeletonCard /><SkeletonCard /><SkeletonCard /></>}
+              </div>
+            </div>
+          ) : (
           <div className="card pad-0">
             <div className="card-title" style={{ padding: "14px 16px 0" }}>
               <h2>Top scanner hits</h2>
@@ -264,6 +282,7 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
+          )}
 
           {/* Why interesting cards */}
           <div>

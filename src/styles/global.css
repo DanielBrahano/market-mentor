@@ -444,3 +444,52 @@ table.data tbody tr:last-child td { border-bottom: none; }
   table.data th { padding: 8px 10px; }
   .card { padding: 13px; }
 }
+
+/* ---------- Beauty & comfort pass (keep last in the cascade) ---------- */
+
+/* Gentle page entrance */
+.page { animation: pageIn 0.22s ease-out; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Cards feel tactile */
+.card { transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease; }
+.index-card:hover, .stock-row-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+.stock-row-card { cursor: pointer; }
+.stock-row-card:active, .index-card:active { transform: scale(0.99); }
+
+/* Index cards tinted by the day's direction */
+.index-card.gain { background: linear-gradient(180deg, color-mix(in srgb, var(--up) 7%, var(--bg-card)), var(--bg-card) 55%); }
+.index-card.lose { background: linear-gradient(180deg, color-mix(in srgb, var(--down) 7%, var(--bg-card)), var(--bg-card) 55%); }
+
+/* Score bars: subtle sheen + animated width */
+.scorebar div { background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent); transition: width 0.4s ease; border-radius: inherit; }
+
+/* Horizontal-scroll hint shadows on wide tables (phones) */
+.table-wrap {
+  background:
+    linear-gradient(90deg, var(--bg-card) 30%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(270deg, var(--bg-card) 30%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0,0,0,0.35), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,0.35), transparent) right / 14px 100% no-repeat scroll;
+}
+
+/* Keyboard/switch-access users get clear focus */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Buttons: subtle press feedback */
+.btn { transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease; }
+.btn:active { transform: scale(0.97); }
+
+/* Phone comfort: bigger touch targets, roomier bottom nav */
+@media (max-width: 640px) {
+  .btn { min-height: 38px; }
+  .btn.sm { min-height: 34px; }
+  .bottom-nav a { padding: 10px 0 9px; }
+  .bottom-nav a .icon { width: 23px; height: 23px; }
+  .drawer { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .stock-row-card { padding: 13px 14px; }
+}
