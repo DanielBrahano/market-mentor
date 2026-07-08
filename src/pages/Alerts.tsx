@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AlertRuleKind } from "../lib/types";
 import { RULE_META } from "../lib/alerts/engine";
+import { disablePush, enablePush, pushStatus, sendTestPush, syncPush, type PushStatus } from "../lib/pushClient";
 import { REAL_UNIVERSE } from "../lib/data/universe";
 import { fmtTimeAgo } from "../lib/utils";
 import { useStore } from "../state/store";
@@ -19,7 +20,36 @@ export default function Alerts() {
   const [newSymbol, setNewSymbol] = useState<string>("ANY_WATCHLIST");
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<string | null>(null);
+  const [push, setPush] = useState<PushStatus | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
   const nav = useNavigate();
+
+  useEffect(() => { void pushStatus().then(setPush); }, []);
+  // Keep the relay's symbol list in sync with the watchlists.
+  useEffect(() => { if (push === "on") void syncPush(watchedSymbols); }, [push, watchedSymbols.join(",")]);
+
+  const onEnablePush = async () => {
+    setPushBusy(true); setPushMsg(null);
+    const r = await enablePush(watchedSymbols);
+    setPushBusy(false);
+    if (r.ok) { setPush("on"); setPushMsg("Enabled! Your watchlist is checked every 15 minutes during market hours — even when the app is closed."); }
+    else setPushMsg(r.reason ?? "Could not enable notifications.");
+    void pushStatus().then(setPush);
+  };
+
+  const onDisablePush = async () => {
+    setPushBusy(true); setPushMsg(null);
+    await disablePush();
+    setPushBusy(false); setPush("off"); setPushMsg("Push notifications turned off.");
+  };
+
+  const onTestPush = async () => {
+    setPushBusy(true); setPushMsg(null);
+    const ok = await sendTestPush();
+    setPushBusy(false);
+    setPushMsg(ok ? "Test sent — a notification should appear on this device within a few seconds." : "Test failed — try disabling and re-enabling push.");
+  };
 
   const active = alerts.find((a) => a.id === openAlert);
 
@@ -133,8 +163,50 @@ export default function Alerts() {
               <span className="faint" style={{ fontWeight: 400 }}>Pattern alerts only fire at or above this confidence. Higher = fewer but cleaner alerts.</span>
             </label>
             <p className="faint" style={{ margin: 0 }}>
-              Alerts are checked while the app is open and shown in this feed. Device push notifications are switched off in this version.
+              In-app alerts are checked while the app is open. Turn on phone notifications below to get alerts even when it's closed.
             </p>
+          </div>
+
+          {/* Phone notifications (real web push) */}
+          <div className="card stack">
+            <div className="card-title" style={{ marginBottom: 0 }}>
+              <h2>Phone notifications</h2>
+              <Tooltip text="Our server checks your watchlist stocks every 15 minutes during market hours (pre-market through after-hours) and sends a notification to this device when a rule triggers — MA crosses, MACD crossovers, unusual volume, RSI recovery or 60-day breakouts. Works even when the app is closed." />
+            </div>
+            {push === null && <span className="faint">Checking…</span>}
+            {push === "unsupported" && (
+              <p className="small muted" style={{ margin: 0 }}>
+                This browser doesn't support push. On iPhone/iPad: open the site in Safari, tap <b>Share → Add to Home Screen</b>, then open the installed app and come back here.
+              </p>
+            )}
+            {push === "denied" && (
+              <p className="small muted" style={{ margin: 0 }}>
+                Notifications are blocked for this site. Allow them in your browser's site settings, then reload.
+              </p>
+            )}
+            {push === "off" && (
+              <>
+                <p className="small muted" style={{ margin: 0 }}>
+                  Get real alerts on this device — even with the app closed. Your {watchedSymbols.length} watchlist stock{watchedSymbols.length === 1 ? "" : "s"} will be monitored every 15 minutes during market hours.
+                </p>
+                <button className="btn primary" disabled={pushBusy} onClick={onEnablePush}>
+                  {pushBusy ? "Enabling…" : "Enable notifications"}
+                </button>
+              </>
+            )}
+            {push === "on" && (
+              <>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className="badge up">Active</span>
+                  <span className="faint">Monitoring {watchedSymbols.length} watchlist stock{watchedSymbols.length === 1 ? "" : "s"}</span>
+                </div>
+                <div className="row">
+                  <button className="btn sm" disabled={pushBusy} onClick={onTestPush}>Send test notification</button>
+                  <button className="btn ghost sm" disabled={pushBusy} onClick={onDisablePush}>Turn off</button>
+                </div>
+              </>
+            )}
+            {pushMsg && <p className="small" style={{ margin: 0, color: "var(--text-dim)" }}>{pushMsg}</p>}
           </div>
         </div>
       </div>

@@ -5,7 +5,7 @@
  *   but a backend can start sending real pushes to the existing subscription
  *   without changing this file.
  */
-const CACHE = "market-mentor-v2";
+const CACHE = "market-mentor-v3";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -51,19 +51,49 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// Real web-push entry point (used when a backend starts pushing).
+// Web-push entry point. The backend sends EMPTY pushes (no payload
+// encryption needed); we wake up, fetch the queued notifications from the
+// data relay, and show each one. Pushes WITH a payload also still work.
+const RELAY = "https://market-mentor-data.daniel431994.workers.dev";
+
+async function endpointHash(endpoint) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint));
+  return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function show(reg, data) {
+  return reg.showNotification(data.title || "Market Mentor", {
+    body: data.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: { url: data.url || "/alerts" },
+    tag: data.tag || undefined,
+  });
+}
+
 self.addEventListener("push", (event) => {
-  let data = { title: "Market Mentor", body: "New alert", url: "/alerts" };
-  try { if (event.data) data = { ...data, ...event.data.json() }; } catch (_) {}
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      data: { url: data.url },
-      tag: data.tag || undefined,
-    })
-  );
+  event.waitUntil((async () => {
+    // Payload push: show it directly.
+    if (event.data) {
+      try { return await show(self.registration, event.data.json()); } catch (_) {}
+    }
+    // Empty push: fetch what's pending for this subscription.
+    try {
+      const sub = await self.registration.pushManager.getSubscription();
+      if (!sub) return;
+      const hash = await endpointHash(sub.endpoint);
+      const res = await fetch(`${RELAY}/push/pending?e=${hash}`);
+      const { items } = await res.json();
+      if (!items || items.length === 0) {
+        return show(self.registration, { title: "Market Mentor", body: "New market activity on your watchlist.", url: "/alerts" });
+      }
+      for (const item of items) await show(self.registration, item);
+    } catch (_) {
+      // Even on failure, show something — a silent push can get the
+      // subscription throttled by the browser.
+      return show(self.registration, { title: "Market Mentor", body: "New market activity on your watchlist.", url: "/alerts" });
+    }
+  })());
 });
 
 // Simulated push: the app posts a message and we show a real OS notification,

@@ -1,5 +1,11 @@
 {
   "name": "market-mentor-data",
   "main": "src/index.js",
-  "compatibility_date": "2026-06-01"
+  "compatibility_date": "2026-06-01",
+  "kv_namespaces": [
+    { "binding": "MM_KV", "id": "587eaf0a1dab4103b897418b22859ba0" }
+  ],
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  }
 }

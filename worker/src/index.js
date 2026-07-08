@@ -14,6 +14,8 @@
  *   GET /indexes                        (S&P 500, Nasdaq, Russell 2000, Dow)
  */
 
+import { handlePushRoute, runAlertSweep } from "./push.js";
+
 const YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/";
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MarketMentor/1.0" };
 
@@ -152,14 +154,28 @@ const INDEXES = [
 ];
 
 export default {
-  async fetch(request) {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runAlertSweep(env, fetchChart).catch(() => {}));
+  },
+
+  async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-    if (request.method !== "GET") return err("GET only", 405);
 
     const url = new URL(request.url);
     const nowSec = Math.floor(Date.now() / 1000);
 
     try {
+      // Push routes (subscribe/unsubscribe are POST; the rest GET).
+      if (url.pathname.startsWith("/push/")) {
+        if (url.pathname === "/push/run") {
+          if (url.searchParams.get("key") !== env.ADMIN_KEY) return err("forbidden", 403);
+          return json(await runAlertSweep(env, fetchChart, url.searchParams.get("force") === "1"), 0);
+        }
+        const handled = await handlePushRoute(url, request, env, json, err);
+        if (handled) return handled;
+        return err("not found", 404);
+      }
+      if (request.method !== "GET") return err("GET only", 405);
       switch (url.pathname) {
         case "/health":
           return json({ ok: true, at: Date.now() });
