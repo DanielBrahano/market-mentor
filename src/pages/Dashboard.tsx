@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { IndexSummary, ScanSnapshot } from "../lib/types";
+import type { IndexSummary, ScanResult, ScanSnapshot } from "../lib/types";
 import { provider } from "../lib/data/provider";
 import { scanUniverse, scoreBand } from "../lib/scanner/engine";
 import { fmtPct, fmtPrice, fmtTimeAgo, classNames } from "../lib/utils";
@@ -9,6 +9,7 @@ import { Sparkline, MiniCandles } from "../components/charts/Sparkline";
 import { ConfidenceBadge, Drawer, EmptyState, ExtHours, ScoreBar, Skeleton, SkeletonCard, Tooltip } from "../components/ui";
 import { ScanProgress } from "../components/ScanProgress";
 import { IconBell, IconInfo, IconTrendUp } from "../components/icons";
+import { useFreshQuotes } from "../lib/useFreshQuotes";
 
 /** Plain-English explainers for each index, shown in the info drawer. */
 const INDEX_INFO: Record<string, { tracks: string; weighting: string; readIt: string }> = {
@@ -39,6 +40,8 @@ export default function Dashboard() {
   const [snap, setSnap] = useState<ScanSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openIndex, setOpenIndex] = useState<IndexSummary | null>(null);
+  const [rescanning, setRescanning] = useState(false);
+  const [welcomed, setWelcomed] = useState(() => localStorage.getItem("mm:welcomed") === "1");
   const { alerts, settings } = useStore();
   const nav = useNavigate();
 
@@ -50,6 +53,20 @@ export default function Dashboard() {
       .catch((e) => !dead && setError(e instanceof Error ? e.message : "Failed to scan market"));
     return () => { dead = true; };
   }, []);
+
+  const rescan = async () => {
+    setRescanning(true);
+    try {
+      const s = await scanUniverse(true, snap?.deep ?? false);
+      setSnap(s);
+      const ix = await provider().getIndexSummaries();
+      setIndexes(ix);
+    } catch { /* keep the current snapshot */ } finally {
+      setRescanning(false);
+    }
+  };
+
+  const dismissWelcome = () => { localStorage.setItem("mm:welcomed", "1"); setWelcomed(true); };
 
   const topHits = useMemo(() => snap?.results.slice(0, 5) ?? null, [snap]);
   const interesting = useMemo(
@@ -66,6 +83,20 @@ export default function Dashboard() {
   );
   const breadth = snap?.breadth ?? null;
   const recentAlerts = alerts.slice(0, 5);
+
+  // Live quotes for everything visible on this page (scan prices go stale).
+  const visibleSymbols = useMemo(() => {
+    const set = new Set<string>();
+    for (const list of [topHits, gainers, losers, interesting]) list?.forEach((r) => set.add(r.symbol));
+    return [...set];
+  }, [topHits, gainers, losers, interesting]);
+  const fresh = useFreshQuotes(visibleSymbols);
+  const livePrice = (r: ScanResult) => fresh.get(r.symbol)?.price ?? r.price;
+  const liveChange = (r: ScanResult) => fresh.get(r.symbol)?.changePct ?? r.changePct;
+  const ext = (r: ScanResult) => {
+    const q = fresh.get(r.symbol) ?? r;
+    return <ExtHours state={q.marketState} price={q.extendedPrice} changePct={q.extendedChangePct} />;
+  };
   const marketState = indexes?.[0]?.marketState;
   const MARKET_STATE_LABEL: Record<string, { label: string; color: string }> = {
     PRE: { label: "Pre-market", color: "var(--warn)" },
@@ -93,11 +124,38 @@ export default function Dashboard() {
             {settings.beginnerMode
               ? "Here's what the market is doing and which stocks our scanner finds interesting today — with plain-English reasons."
               : "Market overview, breadth and top scanner candidates."}
-            {snap && <> Scanned <b>{snap.universeSize.toLocaleString()}</b> stocks (S&P 500 + Russell 2000).</>}
+            {snap && (
+              <>
+                {" "}Scanned <b>{snap.universeSize.toLocaleString()}</b> stocks · updated {fmtTimeAgo(snap.at)}{" "}
+                <button className="btn ghost sm" onClick={rescan} disabled={rescanning} style={{ verticalAlign: "baseline" }}>
+                  {rescanning ? "Rescanning…" : "Rescan now"}
+                </button>
+              </>
+            )}
           </div>
         </div>
         <Link to="/screener" className="btn primary">Open Screener</Link>
       </div>
+
+      {!welcomed && (
+        <div className="card" style={{ borderColor: "var(--accent)", background: "var(--accent-soft)" }}>
+          <div className="row between wrap" style={{ alignItems: "flex-start" }}>
+            <div style={{ maxWidth: 640 }}>
+              <h2 style={{ marginBottom: 6 }}>Welcome to Market Mentor 👋</h2>
+              <p className="small muted" style={{ margin: 0 }}>
+                Real market prices, a transparent setup scanner, and plain-English explanations for everything.
+                The daily habit: <b>1)</b> check the market's mood here, <b>2)</b> find candidates in the Screener or Pattern Explorer,
+                <b> 3)</b> click into a stock and read <i>why</i> it scored what it did. Hover any <span className="tip-icon" style={{ display: "inline-flex" }}>?</span> to learn a term.
+                This is educational software — never financial advice.
+              </p>
+            </div>
+            <div className="row" style={{ flexShrink: 0 }}>
+              <Link className="btn sm" to="/learn" onClick={dismissWelcome}>Start with the basics</Link>
+              <button className="btn primary sm" onClick={dismissWelcome}>Got it</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Index cards — click for a plain-English explainer */}
       <div className="grid cols-4">
@@ -184,10 +242,10 @@ export default function Dashboard() {
                       <tr key={r.symbol} onClick={() => nav(`/stock/${r.symbol}`)}>
                         <td><span className="ticker-link">{r.symbol}</span><div className="faint">{r.name}</div></td>
                         <td className="mono">
-                          {fmtPrice(r.price)}
-                          <div><ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></div>
+                          {fmtPrice(livePrice(r))}
+                          <div>{ext(r)}</div>
                         </td>
-                        <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
+                        <td className={classNames("mono", liveChange(r) >= 0 ? "up" : "down")}>{fmtPct(liveChange(r))}</td>
                         <td>
                           <div className="row" style={{ gap: 8 }}>
                             <ScoreBar score={r.score} max={r.maxScore} />
@@ -297,8 +355,8 @@ export default function Dashboard() {
                   <div className="faint" style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Top gainers</div>
                   {gainers.map((r) => (
                     <div key={r.symbol} className="row between small" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
-                      <span><b>{r.symbol}</b> <ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></span>
-                      <span className="mono up">{fmtPct(r.changePct)}</span>
+                      <span><b>{r.symbol}</b> {ext(r)}</span>
+                      <span className={classNames("mono", liveChange(r) >= 0 ? "up" : "down")}>{fmtPct(liveChange(r))}</span>
                     </div>
                   ))}
                 </div>
@@ -306,8 +364,8 @@ export default function Dashboard() {
                   <div className="faint" style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Top losers</div>
                   {losers.map((r) => (
                     <div key={r.symbol} className="row between small" style={{ cursor: "pointer" }} onClick={() => nav(`/stock/${r.symbol}`)}>
-                      <span><b>{r.symbol}</b> <ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></span>
-                      <span className="mono down">{fmtPct(r.changePct)}</span>
+                      <span><b>{r.symbol}</b> {ext(r)}</span>
+                      <span className={classNames("mono", liveChange(r) >= 0 ? "up" : "down")}>{fmtPct(liveChange(r))}</span>
                     </div>
                   ))}
                 </div>

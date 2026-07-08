@@ -4,7 +4,8 @@ import type { ScanResult } from "../lib/types";
 import { scanUniverse, scoreBand } from "../lib/scanner/engine";
 import { provider } from "../lib/data/provider";
 import { SECTORS } from "../lib/data/universe";
-import { classNames, fmtBig, fmtPct, fmtPrice } from "../lib/utils";
+import { classNames, fmtBig, fmtPct, fmtPrice, fmtTimeAgo } from "../lib/utils";
+import { useFreshQuotes } from "../lib/useFreshQuotes";
 import { useStore } from "../state/store";
 import { ConfidenceBadge, EmptyState, ExtHours, ScoreBar, Tooltip, Seg } from "../components/ui";
 import { ScanProgress } from "../components/ScanProgress";
@@ -42,6 +43,7 @@ export default function Screener() {
   const [rows, setRows] = useState<ScanResult[] | null>(null);
   const [universeSize, setUniverseSize] = useState(0);
   const [isDeep, setIsDeep] = useState(false);
+  const [snapAt, setSnapAt] = useState(0);
   const [deepRunning, setDeepRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -55,7 +57,7 @@ export default function Screener() {
   useEffect(() => {
     let dead = false;
     scanUniverse()
-      .then((s) => { if (!dead) { setRows(s.results); setUniverseSize(s.universeSize); setIsDeep(s.deep); } })
+      .then((s) => { if (!dead) { setRows(s.results); setUniverseSize(s.universeSize); setIsDeep(s.deep); setSnapAt(s.at); } })
       .catch((e) => !dead && setError(e instanceof Error ? e.message : "Scan failed"));
     return () => { dead = true; };
   }, []);
@@ -64,7 +66,7 @@ export default function Screener() {
     setDeepRunning(true);
     try {
       const s = await scanUniverse(true, true);
-      setRows(s.results); setUniverseSize(s.universeSize); setIsDeep(s.deep);
+      setRows(s.results); setUniverseSize(s.universeSize); setIsDeep(s.deep); setSnapAt(s.at);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Deep scan failed");
     } finally {
@@ -106,6 +108,13 @@ export default function Screener() {
 
   // Reset pagination when filters/sort change.
   useEffect(() => setLimit(PAGE), [filters, sort]);
+
+  // Live quotes for the rows on screen (scan prices go stale during trading).
+  const freshSymbols = useMemo(
+    () => (filtered ?? []).slice(0, Math.min(limit, 50)).map((r) => r.symbol),
+    [filtered, limit]
+  );
+  const fresh = useFreshQuotes(freshSymbols);
 
   const th = (key: SortKey, label: string, tip?: string) => (
     <th className="sortable" onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}>
@@ -222,6 +231,7 @@ export default function Screener() {
           <div className="row between wrap" style={{ padding: "12px 16px 0" }}>
             <span className="muted small">
               {filtered ? `${filtered.length.toLocaleString()} match${filtered.length === 1 ? "" : "es"} of ${universeSize.toLocaleString()} scanned` : ""}
+              {snapAt > 0 && <span className="faint"> · scores updated {fmtTimeAgo(snapAt)}, prices live</span>}
               {isDeep && <span className="badge accent" style={{ marginLeft: 8 }}>deep scan</span>}
             </span>
             {canDeepScan && !deepRunning && (
@@ -259,6 +269,10 @@ export default function Screener() {
                 {visible?.map((r) => {
                   const band = scoreBand(r.score, r.maxScore);
                   const watched = isWatched(r.symbol);
+                  const q = fresh.get(r.symbol);
+                  const price = q?.price ?? r.price;
+                  const chg = q?.changePct ?? r.changePct;
+                  const extSrc = q ?? r;
                   return (
                     <tr key={r.symbol} onClick={() => nav(`/stock/${r.symbol}`)}>
                       <td onClick={(e) => { e.stopPropagation(); if (watchlists[0]) toggleSymbol(watchlists[0].id, r.symbol); }}>
@@ -266,10 +280,10 @@ export default function Screener() {
                       </td>
                       <td><span className="ticker-link">{r.symbol}</span><div className="faint">{r.name}</div></td>
                       <td className="mono">
-                        {fmtPrice(r.price)}
-                        <div><ExtHours state={r.marketState} price={r.extendedPrice} changePct={r.extendedChangePct} /></div>
+                        {fmtPrice(price)}
+                        <div><ExtHours state={extSrc.marketState} price={extSrc.extendedPrice} changePct={extSrc.extendedChangePct} /></div>
                       </td>
-                      <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
+                      <td className={classNames("mono", chg >= 0 ? "up" : "down")}>{fmtPct(chg)}</td>
                       <td>
                         <div className="row" style={{ gap: 8 }}>
                           <ScoreBar score={r.score} max={r.maxScore} />
