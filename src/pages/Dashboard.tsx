@@ -164,7 +164,7 @@ export default function Dashboard() {
 
       {!snap && <ScanProgress />}
 
-      <div className="grid" style={{ gridTemplateColumns: "2fr 1fr", alignItems: "start" }}>
+      <div className="grid main-split">
         <div className="stack" style={{ gap: 16 }}>
           {/* Top scanner hits */}
           <div className="card pad-0">

@@ -204,7 +204,7 @@ export default function StockDetail() {
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: "2.2fr 1fr", alignItems: "start" }}>
+      <div className="grid main-split wide">
         {/* Chart column */}
         <div className="stack" style={{ gap: 14 }}>
           <div className="card">

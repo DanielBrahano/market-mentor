@@ -137,7 +137,8 @@ input, select, textarea { font: inherit; }
 
 .topbar {
   display: flex; align-items: center; gap: 12px;
-  padding: 12px 22px;
+  /* Keep clear of the phone status bar in installed/standalone mode. */
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 22px 12px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(8px);
@@ -176,8 +177,8 @@ input, select, textarea { font: inherit; }
   .sidebar { display: none; }
   .main { margin-left: 0; }
   .bottom-nav { display: flex; }
-  .page { padding: 14px 14px 84px; }
-  .topbar { padding: 10px 14px; }
+  .page { padding: 14px 14px calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .topbar { padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px; }
 }
 
 /* ---------- Cards & layout primitives ---------- */
@@ -195,7 +196,12 @@ input, select, textarea { font: inherit; }
 .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
 .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+/* Main-content + side-column split; collapses to one column on phones. */
+.grid.main-split { grid-template-columns: 2fr 1fr; align-items: start; }
+.grid.main-split.narrow { grid-template-columns: 1.4fr 1fr; }
+.grid.main-split.wide { grid-template-columns: 2.2fr 1fr; }
 @media (max-width: 1100px) { .grid.cols-4 { grid-template-columns: repeat(2, 1fr); } .grid.cols-3 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .grid.main-split, .grid.main-split.narrow, .grid.main-split.wide { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; } }
 
 .row { display: flex; align-items: center; gap: 10px; }
@@ -425,3 +431,16 @@ table.data tbody tr:last-child td { border-bottom: none; }
 .condition-dot { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; margin-top: 1px; }
 .condition-dot.met { background: var(--up-soft); color: var(--up); }
 .condition-dot.unmet { background: var(--bg-hover); color: var(--text-faint); }
+
+/* ---------- Phone polish (kept last so it wins the cascade) ---------- */
+@media (max-width: 900px) {
+  h1 { font-size: 20px; }
+}
+@media (max-width: 640px) {
+  /* 16px inputs stop iOS Safari from zoom-jumping on focus. */
+  .input, select.input { font-size: 16px; }
+  table.data { font-size: 12.5px; }
+  table.data td { padding: 8px 10px; }
+  table.data th { padding: 8px 10px; }
+  .card { padding: 13px; }
+}

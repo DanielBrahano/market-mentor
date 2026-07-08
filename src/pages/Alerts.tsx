@@ -80,7 +80,7 @@ export default function Alerts() {
 
       {checkResult && <div className="card small" style={{ padding: "10px 14px" }}>{checkResult}</div>}
 
-      <div className="grid" style={{ gridTemplateColumns: "1.4fr 1fr", alignItems: "start" }}>
+      <div className="grid main-split narrow">
         {/* History */}
         <div className="card pad-0">
           <div className="row between" style={{ padding: "14px 16px 10px" }}>
