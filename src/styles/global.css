@@ -327,7 +327,9 @@ table.data tbody tr:last-child td { border-bottom: none; }
 .tip .tip-body {
   position: absolute; bottom: calc(100% + 8px); left: 50%;
   transform: translateX(-50%);
-  width: 240px;
+  /* Never wider than the viewport (hidden tips still occupy layout). */
+  width: min(240px, calc(100vw - 28px));
+  visibility: hidden;
   background: var(--bg-elev);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -342,7 +344,7 @@ table.data tbody tr:last-child td { border-bottom: none; }
   letter-spacing: normal;
   white-space: normal;
 }
-.tip:hover .tip-body, .tip:focus-within .tip-body { opacity: 1; }
+.tip:hover .tip-body, .tip:focus-within .tip-body { opacity: 1; visibility: visible; }
 
 /* ---------- Skeletons / empty states ---------- */
 @keyframes shimmer { 0% { opacity: 0.55; } 50% { opacity: 1; } 100% { opacity: 0.55; } }
@@ -492,4 +494,31 @@ table.data tbody tr:last-child td { border-bottom: none; }
   .bottom-nav a .icon { width: 23px; height: 23px; }
   .drawer { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
   .stock-row-card { padding: 13px 14px; }
+}
+
+/* ---------- No sideways page panning, ever ---------- */
+html, body { overflow-x: clip; }
+
+/* Columns hidden on phones (tables that must stay tables) */
+@media (max-width: 640px) {
+  .hide-sm { display: none !important; }
+
+  /* Tooltips become a tappable, centered card — thumb-friendly and always
+     fully on screen (hover-positioned bubbles poke off narrow viewports). */
+  .tip .tip-body {
+    position: fixed; left: 16px; right: 16px; top: 50%; bottom: auto;
+    transform: translateY(-50%);
+    width: auto; max-width: none;
+    font-size: 13px; padding: 14px 16px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Comfortable tap targets for segmented controls & sort headers */
+  .seg button { min-height: 36px; padding: 7px 12px; }
+  .tip .tip-icon { width: 17px; height: 17px; font-size: 11px; }
+}
+
+/* Tappable chip-buttons (chart overlay toggles etc.) on phones */
+@media (max-width: 640px) {
+  button.badge { min-height: 34px; padding: 6px 12px; font-size: 12.5px; }
 }

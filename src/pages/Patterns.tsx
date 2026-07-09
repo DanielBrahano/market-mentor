@@ -82,7 +82,7 @@ function PatternLeaderboard({ snap }: { snap: ScanSnapshot }) {
             <div className="table-wrap">
               <table className="data">
                 <thead>
-                  <tr><th>#</th><th>Symbol</th><th>Price</th><th>Today</th><th>Confidence</th><th>Sector</th><th>Chart (60d)</th></tr>
+                  <tr><th>#</th><th>Symbol</th><th>Price</th><th>Today</th><th>Confidence</th><th className="hide-sm">Sector</th><th className="hide-sm">Chart (60d)</th></tr>
                 </thead>
                 <tbody>
                   {hits.map(({ result: r, hit }, i) => (
@@ -92,8 +92,8 @@ function PatternLeaderboard({ snap }: { snap: ScanSnapshot }) {
                       <td className="mono">{fmtPrice(r.price)}</td>
                       <td className={classNames("mono", r.changePct >= 0 ? "up" : "down")}>{fmtPct(r.changePct)}</td>
                       <td><ConfidenceBadge confidence={hit.confidence} /></td>
-                      <td className="faint">{r.sector}</td>
-                      <td><MiniCandles candles={r.candles60.slice(-45)} width={130} height={36} /></td>
+                      <td className="faint hide-sm">{r.sector}</td>
+                      <td className="hide-sm"><MiniCandles candles={r.candles60.slice(-45)} width={130} height={36} /></td>
                     </tr>
                   ))}
                 </tbody>

@@ -6,6 +6,7 @@ import { findEntry } from "../lib/data/universe";
 import { classNames, fmtPct, fmtPrice, fmtVolume } from "../lib/utils";
 import { useStore } from "../state/store";
 import { EmptyState, ExtHours, Skeleton, Tooltip } from "../components/ui";
+import { useIsMobile } from "../lib/useIsMobile";
 import { IconPlus, IconX } from "../components/icons";
 import { Sparkline } from "../components/charts/Sparkline";
 
@@ -44,6 +45,7 @@ export default function Watchlists() {
   const [sparks, setSparks] = useState<Map<string, number[]>>(new Map());
   const [newName, setNewName] = useState("");
   const nav = useNavigate();
+  const isMobile = useIsMobile();
 
   const allSymbols = useMemo(() => Array.from(new Set(watchlists.flatMap((w) => w.symbols))), [watchlists]);
 
@@ -92,12 +94,12 @@ export default function Watchlists() {
 
       {watchlists.map((wl) => (
         <div className="card pad-0" key={wl.id}>
-          <div className="row between" style={{ padding: "14px 16px 10px" }}>
+          <div className="row between wrap" style={{ padding: "14px 16px 10px" }}>
             <div className="row">
               <h2>{wl.name}</h2>
               <span className="badge neutral">{wl.symbols.length} stocks</span>
             </div>
-            <div className="row">
+            <div className="row wrap">
               <AddSymbol existing={wl.symbols} onAdd={(sym) => toggleSymbol(wl.id, sym)} />
               {watchlists.length > 1 && (
                 <button className="btn ghost sm" title="Delete list" onClick={() => { if (confirm(`Delete "${wl.name}"?`)) deleteWatchlist(wl.id); }}>
@@ -109,6 +111,41 @@ export default function Watchlists() {
           {wl.symbols.length === 0 ? (
             <div style={{ padding: "0 16px 16px" }}>
               <EmptyState title="Empty list" hint="Use the search box above to add stocks." />
+            </div>
+          ) : isMobile ? (
+            <div className="stack" style={{ gap: 10, padding: "0 12px 12px" }}>
+              {wl.symbols.map((sym) => {
+                const q = quotes.get(sym);
+                const entry = findEntry(sym);
+                const spark = sparks.get(sym);
+                return (
+                  <div key={sym} className="card stock-row-card" style={{ margin: 0 }} onClick={() => nav(`/stock/${sym}`)}>
+                    <div className="row between" style={{ alignItems: "flex-start", gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span className="ticker-link" style={{ fontSize: 15 }}>{sym}</span>
+                        <div className="faint" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 170 }}>{entry?.name}</div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div className="mono" style={{ fontSize: 16, fontWeight: 700 }}>{q ? fmtPrice(q.price) : "…"}</div>
+                        {q && <div className={classNames("mono small", q.changePct >= 0 ? "up" : "down")} style={{ fontWeight: 650 }}>{fmtPct(q.changePct)}</div>}
+                        {q && <ExtHours state={q.marketState} price={q.extendedPrice} changePct={q.extendedChangePct} showPrice />}
+                      </div>
+                    </div>
+                    <div className="row between" style={{ marginTop: 10, gap: 10 }}>
+                      <span className="faint" style={{ whiteSpace: "nowrap" }}>
+                        Vol {q ? `${fmtVolume(q.volume)} (${(q.volume / q.avgVolume).toFixed(1)}×)` : "…"}
+                      </span>
+                      {spark ? <Sparkline values={spark} /> : <Skeleton w={100} h={28} />}
+                      <button
+                        className="btn ghost sm" title="Remove" style={{ flexShrink: 0 }}
+                        onClick={(e) => { e.stopPropagation(); toggleSymbol(wl.id, sym); }}
+                      >
+                        <IconX className="icon" style={{ width: 15, height: 15 }} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="table-wrap">
