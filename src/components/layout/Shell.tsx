@@ -19,7 +19,8 @@ const NAV = [
   { to: "/settings", label: "Settings", icon: IconSettings },
 ];
 
-const MOBILE_NAV = [NAV[0], NAV[1], NAV[4], NAV[5], NAV[6]];
+// Six thumb tabs; Settings lives behind the topbar gear on phones.
+const MOBILE_NAV = [NAV[0], NAV[1], NAV[2], NAV[4], NAV[5], NAV[3]];
 
 function TickerSearch() {
   const [q, setQ] = useState("");
@@ -120,6 +121,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <TickerSearch />
           <div className="spacer" />
           <DataSourceBadge />
+          <NavLink to="/settings" className="topbar-gear show-sm" aria-label="Settings" title="Settings">
+            <IconSettings className="icon" style={{ width: 19, height: 19 }} />
+          </NavLink>
         </header>
         {provider().freshness === "simulated" && (
           <div

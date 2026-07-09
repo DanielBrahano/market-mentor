@@ -522,3 +522,17 @@ html, body { overflow-x: clip; }
 @media (max-width: 640px) {
   button.badge { min-height: 34px; padding: 6px 12px; font-size: 12.5px; }
 }
+
+/* Mobile-only elements (visible when the sidebar is hidden) */
+.show-sm { display: none !important; }
+@media (max-width: 900px) {
+  .show-sm { display: inline-flex !important; }
+  .topbar-gear {
+    align-items: center; justify-content: center;
+    width: 38px; height: 38px; flex-shrink: 0;
+    border-radius: 10px; color: var(--text-dim);
+  }
+  .topbar-gear.active { color: var(--accent); background: var(--accent-soft); }
+  /* Six tabs need slightly tighter labels */
+  .bottom-nav a { font-size: 10px; }
+}
