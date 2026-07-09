@@ -24,6 +24,42 @@ export interface ScanCondition {
 const last = (xs: number[]) => xs[xs.length - 1];
 const prev = (xs: number[]) => xs[xs.length - 2];
 
+// ---------------------------------------------------------------------------
+// Benchmark closes (^GSPC) for the relative-strength condition. Populated by
+// ensureBenchmark(); conditions degrade gracefully (unmet) when unavailable.
+// ---------------------------------------------------------------------------
+let BENCH_CLOSES: number[] | null = null;
+let benchFetchedAt = 0;
+
+export async function ensureBenchmark(): Promise<void> {
+  if (BENCH_CLOSES && Date.now() - benchFetchedAt < 600_000) return;
+  try {
+    const candles = await provider().getDailyHistory("^GSPC");
+    BENCH_CLOSES = candles.map((c) => c.c);
+    benchFetchedAt = Date.now();
+  } catch {
+    BENCH_CLOSES = null;
+  }
+}
+
+/**
+ * Data-quality gatekeeper. Illiquid tickers and flat "barcode" charts make
+ * technical conditions meaningless (quiet ≠ consolidating when nothing
+ * trades), so they never reach scoring.
+ */
+export function passesQualityGate(candles: Candle[]): boolean {
+  if (candles.length < 60) return false;
+  // Liquidity floor: median daily dollar volume over the last month.
+  const dollar = candles.slice(-20).map((c) => c.c * c.v).sort((a, b) => a - b);
+  const medianDollar = dollar[Math.floor(dollar.length / 2)] ?? 0;
+  if (medianDollar < 750_000) return false;
+  // "Barcode" detector: too many sessions with no volume or near-zero range.
+  const win = candles.slice(-60);
+  const dead = win.filter((c) => c.v === 0 || (c.h - c.l) / (c.c || 1) < 0.0015).length;
+  if (dead > win.length * 0.3) return false;
+  return true;
+}
+
 export const SCAN_CONDITIONS: ScanCondition[] = [
   {
     id: "above-mas",
@@ -142,6 +178,27 @@ export const SCAN_CONDITIONS: ScanCondition[] = [
     },
   },
   {
+    id: "relative-strength",
+    label: "Outperforming the S&P 500 (3 months)",
+    weight: 8,
+    help: "Stocks that beat the index while it chops or falls show real demand — leaders lead before breakouts.",
+    test: (c) => {
+      const n = 63; // ~3 trading months
+      if (!BENCH_CLOSES || BENCH_CLOSES.length < n + 1 || c.length < n + 1) {
+        return { met: false, detail: "Benchmark comparison unavailable right now." };
+      }
+      const stockRet = (c[c.length - 1].c - c[c.length - 1 - n].c) / c[c.length - 1 - n].c;
+      const benchRet = (BENCH_CLOSES[BENCH_CLOSES.length - 1] - BENCH_CLOSES[BENCH_CLOSES.length - 1 - n]) / BENCH_CLOSES[BENCH_CLOSES.length - 1 - n];
+      const met = stockRet > benchRet;
+      return {
+        met,
+        detail: met
+          ? `Up ${(stockRet * 100).toFixed(1)}% over 3 months vs the S&P 500's ${(benchRet * 100).toFixed(1)}% — outperforming the market.`
+          : `Up ${(stockRet * 100).toFixed(1)}% over 3 months vs the S&P 500's ${(benchRet * 100).toFixed(1)}% — lagging the market.`,
+      };
+    },
+  },
+  {
     id: "tight-action",
     label: "Tight price action after an advance",
     weight: 6,
@@ -229,6 +286,7 @@ function yieldToUI(): Promise<void> {
 
 async function runScan(deep: boolean): Promise<ScanSnapshot> {
   const p = provider();
+  await ensureBenchmark();
   const entries = p.getScanUniverse ? p.getScanUniverse(deep) : p.getUniverse();
   const total = entries.length;
   const results: ScanResult[] = [];
@@ -252,6 +310,7 @@ async function runScan(deep: boolean): Promise<ScanSnapshot> {
       const h = histories[k];
       if (h.status !== "fulfilled" || h.value.length < 60) continue; // skip unfetchable symbols
       const candles = h.value;
+      if (!passesQualityGate(candles)) continue; // illiquid / "barcode" charts never get scored
       const quote = quoteBy.get(e.symbol);
       const company = await p.getCompany(e.symbol).catch(() => null);
       const b = computeBundle(candles);

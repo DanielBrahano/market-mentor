@@ -133,7 +133,11 @@ function state(symbol: string): SymState {
     cache.set(symbol, s);
     return s;
   }
-  const e = findEntry(symbol);
+  // Index symbols (^GSPC etc.) get a synthetic benchmark series so the
+  // relative-strength condition works in simulated mode too.
+  const e = findEntry(symbol) ?? (symbol.startsWith("^")
+    ? { symbol, name: "Index", sector: "Index", industry: "Index", universe: "sp500" as const, basePrice: 7400, baseCap: 0, drift: 0.35, summary: "" }
+    : undefined);
   if (!e) throw new Error(`Unknown symbol ${symbol}`);
   const daily = genDaily(e);
   const intraday = genIntraday(e, daily);

@@ -150,6 +150,8 @@ export interface PatternHit {
   endIndex: number;
   keyPoints: { index: number; price: number; role: string }[];
   explanation: string;
+  /** Breakout/breakdown level that would confirm the pattern. */
+  trigger?: number;
 }
 
 export interface CandlePatternHit {

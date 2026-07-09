@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { Candle, CompanyInfo, PatternHit, Quote, Timeframe } from "../lib/types";
 import { provider } from "../lib/data/provider";
 import { computeBundle, slopePctPerDay, vwap, type IndicatorBundle } from "../lib/indicators/core";
-import { evaluateSymbol } from "../lib/scanner/engine";
+import { ensureBenchmark, evaluateSymbol } from "../lib/scanner/engine";
 import { detectRecentCandlePatterns } from "../lib/patterns/candlesticks";
 import { classNames, fmtBig, fmtChange, fmtPct, fmtPrice, fmtVolume } from "../lib/utils";
 import { useStore } from "../state/store";
@@ -97,7 +97,8 @@ export default function StockDetail() {
     (async () => {
       try {
         const p = provider();
-        const [c, q, d] = await Promise.all([p.getCompany(sym), p.getQuote(sym), p.getDailyHistory(sym)]);
+        // Benchmark first so the checklist's relative-strength check has data.
+        const [c, q, d] = await Promise.all([p.getCompany(sym), p.getQuote(sym), p.getDailyHistory(sym), ensureBenchmark()]);
         if (dead) return;
         setCompany(c); setQuote(q); setDaily(d);
         const unsub = p.subscribeQuotes([sym], (nq) => !dead && setQuote(nq));

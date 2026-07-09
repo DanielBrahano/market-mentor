@@ -1,7 +1,7 @@
 import React from "react";
 import type { Quote, ScanResult } from "../lib/types";
 import { scoreBand } from "../lib/scanner/engine";
-import { classNames, fmtPct, fmtPrice } from "../lib/utils";
+import { classNames, fmtPct, fmtPrice, fmtVolume } from "../lib/utils";
 import { ConfidenceBadge, ExtHours, ScoreBar } from "./ui";
 import { MiniCandles } from "./charts/Sparkline";
 import { IconStar } from "./icons";
@@ -51,6 +51,10 @@ export function StockRowCard({
           <span className={classNames("badge", band.tone === "strong" ? "up" : band.tone === "moderate" ? "warn" : "neutral")}>{band.label}</span>
         </div>
         <MiniCandles candles={r.candles60.slice(-30)} width={86} height={30} />
+      </div>
+      {/* Verification line: what kind of thing this is and how actively it trades */}
+      <div className="faint" style={{ marginTop: 8 }}>
+        {r.sector} · {r.universe === "sp500" ? "S&P 500" : "Small cap"} · RVOL {r.relVol.toFixed(1)}× · Avg vol {fmtVolume(r.avgVolume)}
       </div>
       {r.patterns[0] && (
         <div className="row wrap" style={{ marginTop: 8, gap: 6 }}>

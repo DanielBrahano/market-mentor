@@ -168,6 +168,44 @@ export function detectChartPatterns(candles: Candle[], lookback = 130): PatternH
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Reality gates: geometry alone isn't a signal.
+  // 1. Neckline trigger — a directional pattern can't exceed 50% confidence
+  //    until price is within 1.5% of (or through) its trigger level.
+  // 2. Volume confirmation — fading volume into the "breakout side" of the
+  //    pattern cuts confidence; expanding volume earns a small boost.
+  // ---------------------------------------------------------------------
+  const volAvg = (from: number, to: number) => {
+    const xs = seg.slice(Math.max(0, from), Math.max(1, to));
+    return xs.reduce((a, c) => a + c.v, 0) / Math.max(1, xs.length);
+  };
+  for (const h of hits) {
+    const keyPrices = h.keyPoints.map((k) => k.price);
+    if (h.bias === "bullish" || h.bias === "bearish") {
+      const trigger = h.bias === "bullish" ? Math.max(...keyPrices) : Math.min(...keyPrices);
+      h.trigger = Math.round(trigger * 100) / 100;
+      const dist = h.bias === "bullish" ? (trigger - lastClose) / trigger : (lastClose - trigger) / trigger;
+      if (dist > 0.05) h.confidence = Math.min(h.confidence, 0.4);
+      else if (dist > 0.015) h.confidence = Math.min(h.confidence, 0.5);
+      if (dist > 0.015) {
+        h.explanation += ` Not confirmed yet: the pattern only triggers if price ${h.bias === "bullish" ? "breaks above" : "breaks below"} ${trigger.toFixed(2)} (${(dist * 100).toFixed(1)}% away).`;
+      }
+    }
+    const patternStart = h.startIndex - offset;
+    const rightSide = volAvg(seg.length - 5, seg.length);
+    const whole = volAvg(patternStart, seg.length);
+    if (whole > 0) {
+      const ratio = rightSide / whole;
+      if (ratio < 0.7) {
+        h.confidence = Math.round(h.confidence * 0.85 * 100) / 100;
+        h.explanation += " Volume is fading rather than building — weaker conviction behind the move.";
+      } else if (ratio > 1.3) {
+        h.confidence = Math.min(0.95, Math.round(h.confidence * 1.08 * 100) / 100);
+      }
+    }
+    h.confidence = Math.round(h.confidence * 100) / 100;
+  }
+
   // Dedupe by kind, keep highest confidence, sort desc.
   const best = new Map<PatternKind, PatternHit>();
   for (const h of hits) {
