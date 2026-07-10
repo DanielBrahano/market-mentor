@@ -4,7 +4,7 @@ import { useStore } from "../../state/store";
 import { DataSourceBadge } from "../ui";
 import {
   IconBell, IconDashboard, IconLearn, IconPattern,
-  IconScreener, IconSearch, IconSettings, IconWatchlist,
+  IconScreener, IconSearch, IconSettings, IconTrendUp, IconWatchlist,
 } from "../icons";
 import { provider } from "../../lib/data/provider";
 import { liveFellBack } from "../../lib/data/select";
@@ -17,6 +17,8 @@ const NAV = [
   { to: "/watchlists", label: "Watchlists", icon: IconWatchlist },
   { to: "/alerts", label: "Alerts", icon: IconBell },
   { to: "/settings", label: "Settings", icon: IconSettings },
+  // Appended last so MOBILE_NAV's index references above stay stable.
+  { to: "/track-record", label: "Track Record", icon: IconTrendUp },
 ];
 
 // Six thumb tabs; Settings lives behind the topbar gear on phones.

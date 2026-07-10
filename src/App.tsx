@@ -11,6 +11,7 @@ const Learn = React.lazy(() => import("./pages/Learn"));
 const Watchlists = React.lazy(() => import("./pages/Watchlists"));
 const Alerts = React.lazy(() => import("./pages/Alerts"));
 const Settings = React.lazy(() => import("./pages/Settings"));
+const TrackRecord = React.lazy(() => import("./pages/TrackRecord"));
 
 function Fallback() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/watchlists" element={<Watchlists />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/track-record" element={<TrackRecord />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

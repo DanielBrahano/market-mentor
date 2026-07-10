@@ -2,6 +2,7 @@ import type { BreadthSummary, Candle, ConditionResult, ScanResult, ScanSnapshot 
 import { computeBundle, priorHigh, relativeVolume, slopePctPerDay, type IndicatorBundle } from "../indicators/core";
 import { detectChartPatterns } from "../patterns/chartPatterns";
 import { provider } from "../data/provider";
+import { recordBenchmark } from "../bench";
 
 /**
  * Transparent bullish-setup scanner.
@@ -361,7 +362,10 @@ async function runScan(deep: boolean): Promise<ScanSnapshot> {
     pctAbove200ma: (above200 / totalTicks) * 100,
     newHighs: newHi, newLows: newLo,
   };
-  return { at: Date.now(), results, breadth, universeSize: total, deep };
+  const snap: ScanSnapshot = { at: Date.now(), results, breadth, universeSize: total, deep };
+  // Self-benchmark: immutably record today's top picks (fire-and-forget).
+  void recordBenchmark(snap);
+  return snap;
 }
 
 /**

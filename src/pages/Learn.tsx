@@ -190,6 +190,15 @@ function HowItWorks() {
         </div>
       </div>
 
+      <div className="card stack">
+        <h2>Is the method actually working?</h2>
+        <p className="small muted" style={{ margin: 0 }}>
+          Don't take our word for it — the scanner benchmarks itself. Every trading day its top picks are recorded immutably
+          and measured against simply holding the S&P 500 over the same period.
+        </p>
+        <a className="btn" href="/track-record" style={{ alignSelf: "flex-start" }}>See the live track record →</a>
+      </div>
+
       <div className="card stack" style={{ background: "var(--warn-soft)", borderColor: "var(--warn)" }}>
         <h2>Honest limitations</h2>
         <p className="small" style={{ margin: 0 }}>

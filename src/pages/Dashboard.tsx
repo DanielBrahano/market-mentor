@@ -137,7 +137,10 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <Link to="/screener" className="btn primary">Open Screener</Link>
+        <div className="row wrap">
+          <Link to="/track-record" className="btn">📈 Track record</Link>
+          <Link to="/screener" className="btn primary">Open Screener</Link>
+        </div>
       </div>
 
       {!welcomed && (
