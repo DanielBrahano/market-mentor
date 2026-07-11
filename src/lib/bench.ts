@@ -19,11 +19,24 @@ export interface BenchPick {
   score: number;
 }
 
+export type HorizonKey = "1w" | "1m" | "3m";
+
+/** A frozen verdict: computed once from historical closes, never changes. */
+export interface SettledHorizon {
+  settledAt: number;
+  avgRet: number;
+  spxRet: number;
+  alpha: number;
+  picks: { symbol: string; ret: number | null }[];
+}
+
 export interface BenchCohort {
   date: string;
   at: number;
   spx: number;
   picks: BenchPick[];
+  /** Fixed-horizon verdicts, settled server-side as they mature. */
+  settled?: Partial<Record<HorizonKey, SettledHorizon>>;
 }
 
 const GUARD_KEY = "mm:benchRecorded";

@@ -15,7 +15,7 @@
  */
 
 import { handlePushRoute, runAlertSweep } from "./push.js";
-import { handleBenchRoute } from "./bench.js";
+import { handleBenchRoute, settleBenchmarks } from "./bench.js";
 
 const YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/";
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MarketMentor/1.0" };
@@ -157,6 +157,8 @@ const INDEXES = [
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runAlertSweep(env, fetchChart).catch(() => {}));
+    // Lock in matured track-record verdicts (runs even when the market is closed).
+    ctx.waitUntil(settleBenchmarks(env, fetchChart).catch(() => {}));
   },
 
   async fetch(request, env) {
@@ -177,6 +179,10 @@ export default {
         return err("not found", 404);
       }
       if (url.pathname.startsWith("/bench/")) {
+        if (url.pathname === "/bench/settle") {
+          if (url.searchParams.get("key") !== env.ADMIN_KEY) return err("forbidden", 403);
+          return json(await settleBenchmarks(env, fetchChart), 0);
+        }
         const handled = await handleBenchRoute(url, request, env, json, err, fetchChart);
         if (handled) return handled;
         return err("not found", 404);

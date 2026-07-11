@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Quote } from "../lib/types";
-import { fetchBenchmark, type BenchCohort } from "../lib/bench";
+import { fetchBenchmark, type BenchCohort, type HorizonKey, type SettledHorizon } from "../lib/bench";
 import { provider } from "../lib/data/provider";
 import { classNames, fmtPct, fmtPrice } from "../lib/utils";
 import { EmptyState, Skeleton, Tooltip } from "../components/ui";
@@ -64,6 +64,32 @@ export default function TrackRecord() {
     });
   }, [cohorts, quotes, spxNow]);
 
+  const HORIZONS: { key: HorizonKey; label: string; days: string }[] = [
+    { key: "1w", label: "1 week", days: "5 trading days" },
+    { key: "1m", label: "1 month", days: "21 trading days" },
+    { key: "3m", label: "3 months", days: "63 trading days" },
+  ];
+
+  // Frozen fixed-horizon verdicts — the accountable numbers.
+  const settledAgg = useMemo(() => {
+    if (!cohorts) return null;
+    return HORIZONS.map((h) => {
+      const settled = cohorts.map((c) => c.settled?.[h.key]).filter((s): s is SettledHorizon => !!s);
+      if (settled.length === 0) return { ...h, n: 0, avgAlpha: 0, beatRate: 0, winRate: 0, avgRet: 0 };
+      const allPicks = settled.flatMap((s) => s.picks.filter((p) => p.ret != null));
+      return {
+        ...h,
+        n: settled.length,
+        avgRet: settled.reduce((a, s) => a + s.avgRet, 0) / settled.length,
+        avgAlpha: settled.reduce((a, s) => a + s.alpha, 0) / settled.length,
+        beatRate: settled.filter((s) => s.alpha > 0).length / settled.length,
+        winRate: allPicks.filter((p) => (p.ret ?? 0) > 0).length / Math.max(1, allPicks.length),
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cohorts]);
+  const anySettled = settledAgg?.some((h) => h.n > 0) ?? false;
+
   const agg = useMemo(() => {
     if (!rows) return null;
     const scored = rows.filter((r) => r.alpha != null && r.ageDays >= 1);
@@ -85,8 +111,9 @@ export default function TrackRecord() {
         <h1>Track record</h1>
         <div className="muted small">
           Does the scanner's method actually work? Every trading day the top 5 "Strong setup" S&P 500 picks are recorded automatically
-          with their entry prices — then measured against simply holding the S&P 500 over the same period. The record is immutable:
-          entries are verified against live market data when written and can't be edited afterwards.
+          with their entry prices. Each cohort then gets <b>frozen verdicts at fixed horizons</b> — 1 week, 1 month and 3 months of trading days —
+          computed from closing prices against the S&P 500 over the identical window. Once settled, a verdict never changes.
+          The record is immutable: entries are verified against live market data when written and can't be edited afterwards.
         </div>
       </div>
 
@@ -99,7 +126,50 @@ export default function TrackRecord() {
         />
       )}
 
-      {/* Aggregate scoreboard */}
+      {/* Settled verdicts — the accountable, frozen numbers */}
+      {rows && rows.length > 0 && (
+        <div className="card stack">
+          <div className="card-title" style={{ marginBottom: 0 }}>
+            <h2>Settled verdicts</h2>
+            <Tooltip text="The accountable numbers. Each cohort's return is locked in at exactly 5, 21 and 63 trading days after entry, using closing prices, against the S&P 500 over the identical window — then frozen forever. Live 'since entry' numbers below keep moving; these don't." />
+          </div>
+          {anySettled ? (
+            <div className="table-wrap">
+              <table className="data">
+                <thead>
+                  <tr><th>Horizon</th><th>Cohorts</th><th>Avg picks</th><th>Edge vs S&P</th><th>Beat rate</th><th>Picks positive</th></tr>
+                </thead>
+                <tbody>
+                  {settledAgg!.map((h) => (
+                    <tr key={h.key} style={{ cursor: "default" }}>
+                      <td style={{ fontWeight: 650 }}>{h.label}{h.key === "1m" && <span className="badge accent" style={{ marginLeft: 6 }}>headline</span>}</td>
+                      {h.n === 0 ? (
+                        <td colSpan={5} className="faint">No cohorts this old yet.</td>
+                      ) : (
+                        <>
+                          <td className="mono">{h.n}</td>
+                          <td className={classNames("mono", h.avgRet >= 0 ? "up" : "down")}>{fmtPct(h.avgRet * 100)}</td>
+                          <td className={classNames("mono", h.avgAlpha >= 0 ? "up" : "down")} style={{ fontWeight: 700 }}>{fmtPct(h.avgAlpha * 100)}</td>
+                          <td className="mono">{Math.round(h.beatRate * 100)}%</td>
+                          <td className="mono">{Math.round(h.winRate * 100)}%</td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="small muted" style={{ margin: 0 }}>
+              No verdicts have matured yet. The first <b>1-week</b> verdict locks in 5 trading days after the first cohort;
+              <b> 1-month</b> after 21 trading days; <b>3-month</b> after 63. Verdicts settle automatically on the server —
+              nothing to do but wait, and nobody can touch the numbers.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Aggregate scoreboard (live, still-moving numbers) */}
       {agg && (
         <div className="grid cols-4">
           <div className="card" style={{ textAlign: "center" }}>
@@ -138,7 +208,7 @@ export default function TrackRecord() {
             </div>
             <div className="row wrap" style={{ gap: 8 }}>
               {r.avgRet != null && (
-                <span className={classNames("badge", r.avgRet >= 0 ? "up" : "down")}>picks {fmtPct(r.avgRet * 100)}</span>
+                <span className={classNames("badge", r.avgRet >= 0 ? "up" : "down")}>live {fmtPct(r.avgRet * 100)}</span>
               )}
               {r.spxRet != null && <span className="badge outline">S&P {fmtPct(r.spxRet * 100)}</span>}
               {r.alpha != null && (
@@ -147,6 +217,21 @@ export default function TrackRecord() {
                 </span>
               )}
             </div>
+          </div>
+          {/* Frozen horizon verdicts for this cohort */}
+          <div className="row wrap" style={{ gap: 6, padding: "0 16px 10px" }}>
+            {HORIZONS.map((h) => {
+              const s = r.cohort.settled?.[h.key];
+              return s ? (
+                <Tooltip key={h.key} text={`Locked ${h.days} after entry: picks ${fmtPct(s.avgRet * 100)} vs S&P ${fmtPct(s.spxRet * 100)} over the same window. This verdict is frozen — it will never change.`}>
+                  <span className={classNames("badge", s.alpha >= 0 ? "up" : "down")} style={{ fontWeight: 700 }}>
+                    {h.label}: {s.alpha >= 0 ? "beat" : "lagged"} {fmtPct(Math.abs(s.alpha) * 100)} 🔒
+                  </span>
+                </Tooltip>
+              ) : (
+                <span key={h.key} className="badge neutral">{h.label}: pending</span>
+              );
+            })}
           </div>
           <div className="stack" style={{ gap: 0 }}>
             {r.pickRets.map((p) => (
@@ -169,9 +254,9 @@ export default function TrackRecord() {
 
       <div className="card" style={{ background: "var(--warn-soft)", borderColor: "var(--warn)" }}>
         <span className="small">
-          <b>What this is:</b> a paper benchmark of the scanner's own signals — equal-weight entries at scan-time prices, no fees, no slippage, no exits.
-          It exists to honestly test whether the method has an edge, not to prove it does. Short histories mean nothing; and even a real historical edge is
-          <b> not</b> a prediction or investment advice.
+          <b>What this is:</b> a paper benchmark of the scanner's own signals — equal-weight entries at scan-time prices, exits scored at fixed
+          1-week / 1-month / 3-month horizons using closing prices, no fees or slippage. It exists to honestly test whether the method has an edge,
+          not to prove it does. Short histories mean nothing; and even a real historical edge is <b>not</b> a prediction or investment advice.
         </span>
       </div>
     </div>

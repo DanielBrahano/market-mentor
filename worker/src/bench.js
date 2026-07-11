@@ -9,6 +9,108 @@
  * The app later measures each cohort against the S&P over the same window.
  */
 
+/**
+ * Fixed evaluation horizons, in TRADING days. A cohort's verdict at each
+ * horizon is computed from historical closing prices exactly N trading days
+ * after entry, then frozen forever — unlike "since entry" tracking, a settled
+ * verdict never changes, which is what makes the record accountable.
+ */
+const HORIZONS = [
+	{ key: "1w", days: 5 },
+	{ key: "1m", days: 21 },
+	{ key: "3m", days: 63 },
+];
+
+const round4 = (n) => Math.round(n * 10000) / 10000;
+
+/**
+ * Settle at most ONE cohort per invocation (subrequest budget: 5 picks + SPX
+ * = 6 chart fetches). Runs from the cron; the backlog clears within hours.
+ */
+export async function settleBenchmarks(env, fetchChart) {
+	const idx = (await env.MM_KV.get("bench:idx", "json")) || [];
+	for (const date of idx) {
+		const key = `bench:d:${date}`;
+		const cohort = await env.MM_KV.get(key, "json");
+		if (!cohort) continue;
+		cohort.settled = cohort.settled || {};
+		const pending = HORIZONS.filter((h) => !cohort.settled[h.key]);
+		if (pending.length === 0) continue;
+		// Calendar pre-check: 5 trading days need ≥7 calendar days.
+		if (Date.now() - cohort.at < 6.5 * 86_400_000) continue;
+
+		const closesOf = (chart) => {
+			const ts = chart.timestamp || [];
+			const cl = chart.indicators?.quote?.[0]?.close || [];
+			const out = [];
+			for (let i = 0; i < ts.length; i++) {
+				if (cl[i] != null) out.push({ day: new Date(ts[i] * 1000).toISOString().slice(0, 10), c: cl[i] });
+			}
+			return out;
+		};
+
+		let spxSeries;
+		try {
+			spxSeries = closesOf(await fetchChart("^GSPC", { range: "1y", interval: "1d" }));
+		} catch {
+			return { settled: null, error: "spx fetch failed" };
+		}
+		// Entry anchor: first trading day on/after the cohort date. (A cohort
+		// recorded on a weekend anchors to the next Monday; its entry prices
+		// are the prior close, which slightly UNDERSTATES the picks' returns —
+		// bias against ourselves is the acceptable direction.)
+		const i0 = spxSeries.findIndex((x) => x.day >= cohort.date);
+		if (i0 < 0) continue;
+
+		const matured = pending.filter((h) => spxSeries.length > i0 + h.days);
+		if (matured.length === 0) continue;
+
+		const pickSeries = {};
+		try {
+			for (const p of cohort.picks) {
+				pickSeries[p.symbol] = closesOf(await fetchChart(p.symbol.replace(/\./g, "-"), { range: "1y", interval: "1d" }));
+			}
+		} catch {
+			return { settled: null, error: `pick fetch failed for ${date}` };
+		}
+
+		let changed = false;
+		for (const h of matured) {
+			const spxEnd = spxSeries[i0 + h.days].c;
+			const spxRet = (spxEnd - cohort.spx) / cohort.spx;
+			const picks = [];
+			let sum = 0, n = 0;
+			for (const p of cohort.picks) {
+				const s = pickSeries[p.symbol] || [];
+				const j0 = s.findIndex((x) => x.day >= cohort.date);
+				if (j0 < 0 || s.length <= j0 + h.days) {
+					picks.push({ symbol: p.symbol, ret: null });
+					continue;
+				}
+				const ret = (s[j0 + h.days].c - p.price) / p.price;
+				picks.push({ symbol: p.symbol, ret: round4(ret) });
+				sum += ret;
+				n++;
+			}
+			if (n === 0) continue;
+			const avgRet = sum / n;
+			cohort.settled[h.key] = {
+				settledAt: Date.now(),
+				avgRet: round4(avgRet),
+				spxRet: round4(spxRet),
+				alpha: round4(avgRet - spxRet),
+				picks,
+			};
+			changed = true;
+		}
+		if (changed) {
+			await env.MM_KV.put(key, JSON.stringify(cohort));
+			return { settled: date, horizons: matured.map((h) => h.key) };
+		}
+	}
+	return { settled: null };
+}
+
 export async function handleBenchRoute(url, request, env, json, err, fetchChart) {
   switch (url.pathname) {
     case "/bench/record": {
